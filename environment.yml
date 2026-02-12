@@ -1,0 +1,9 @@
+name: hicotenv
+channels:
+  - defaults
+dependencies:
+  - pot
+  - ipykernel
+  - matplotlib
+  - seaborn
+prefix: /opt/anaconda3/envs/hicotenv
