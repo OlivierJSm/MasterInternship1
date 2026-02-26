@@ -29,7 +29,8 @@ def import_cool(file_path: str, resolution: int = None):
     if file_path.endswith(".mcool"):
         # Error if no resolution
         if resolution == None:
-            raise ValueError("resolution must be specified for .mcool files")
+            print("resolution must be specified for .mcool files, returning nothing")
+            return
         
         uri = f"{file_path}::resolutions/{resolution}"
         clr = cooler.Cooler(uri)
@@ -370,6 +371,39 @@ def bin_contact_map(matrix : np.ndarray, bin_size : int):
     binned_matrix = matrix[:m*bin_size, :m*bin_size].reshape(m, bin_size, m, bin_size).sum(axis=(1, 3))
 
     return binned_matrix
+
+def bulk_coarsen(in_dir: str, out_dir: str, factor: int) -> None:
+    '''
+        Takes a directory with .cool files and bins them to the provided
+        resolution.
+
+        FUNTION IS UNFINISHED
+
+        Parameters
+        ----------
+        in_dir : str
+            Directory with .cool files.
+        out_dir : str
+            Directory to write the coarsened .cool files to.
+        res : int
+            Resolution to bin the .cool files to.
+    '''
+    # Initializing paths
+    folder = Path(in_dir)
+    out_dir = Path(out_dir)
+
+    # Coarsening and writing
+    for file in folder.glob("*.cool"):
+        out = out_dir / f"{file.stem}_{factor}x_binned.cool"
+
+        cooler.coarsen_cooler(
+            str(file),
+            str(out),
+            factor,
+            chunksize=10_000_000
+        )
+
+    return
 
 def remap_pixels(clr: cooler.api.Cooler, old_map: dict, new_map: dict):
     '''

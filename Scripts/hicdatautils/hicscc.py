@@ -329,7 +329,8 @@ def scc_compare_matrix(clrs: list[cooler.api.Cooler], h: int, d_bp_max: int, b_d
             Chromosomes that should be ignored for SCC calculation.
             Default = None, excludes no chromosomes.
 
-        Returns:
+        Returns
+        -------
         df : pd.DataFrame
             A pandas dataframe with all comparisons.
     '''
@@ -349,6 +350,100 @@ def scc_compare_matrix(clrs: list[cooler.api.Cooler], h: int, d_bp_max: int, b_d
     df = pd.DataFrame(matrix_dict)
 
     return df
+
+def scc_bulk(
+        sources: list[cooler.api.Cooler], 
+        targets: list[cooler.api.Cooler], 
+        h: int = 1, 
+        d_bp_max: int = -1, 
+        b_down_sample: bool = False, 
+        chr_names: list[str] = None, 
+        chr_exclude: set[str] = None
+        ) -> pd.DataFrame:
+    '''
+        Takes a list of source and target coolers and calculates pair-wise
+        SCC scores based on the provided parameters.
+
+        Parameters
+        ----------
+        sources : list[cooler.api.Cooler]          
+            List of source cooler objects.
+        targets : list[cooler.api.Cooler]          
+            List of target cooler objects.
+        h : int              
+            The smoothing parameter used for the 2D mean filter smoothing.
+            Default = 1
+        d_bp_max : int      
+            The maximum genomic distance between contacts that will be considered for
+            calculating the SCC.
+            Default = -1, considers all diagonals.
+        b_down_sample : bool  
+            Determines if the input file with more contacts should be downsized
+            to the same number of contacts as the other input files.
+            Default = False.
+        chr_names : list[str]       
+            Chromosomes whose SCC should be calculated.
+            Default = None, takes all chromosomes.
+        chr_exclude : set[str]    
+            Chromosomes that should be ignored for SCC calculation.
+            Default = None, excludes no chromosomes.
+
+        Returns
+        -------
+        scc_values : pd.DataFrame
+            SCC results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Getting cooler names
+    source_names = []
+
+    for source in sources:
+        source_names.append(get_cool_name(source))
+    
+    target_names = []
+
+    for target in targets:
+        target_names.append(get_cool_name(target))
+
+    # Generating data
+        # Create empty dict
+    scc_results = {}
+
+        # Loop through all sources (coords, values, names)
+    for i, s_name in enumerate(source_names):
+        # Loop through all targets (coords, values, names)
+        for j, t_name in enumerate(target_names):
+            # Key for dict
+            key = tuple(sorted((s_name, t_name)))
+
+            # Check if the same and assign 0
+            if s_name == t_name:
+                scc_value = 1
+            # Check if comparison has already been performed
+            elif key in scc_results:
+                scc_value = scc_results[key]
+            # Perform compariuson
+            else:
+                scc_value = hicrepSCC(sources[i], targets[j], h, d_bp_max, b_down_sample, chr_names, chr_exclude)
+                if len(scc_value) == 1:
+                    scc_value = scc_value[0]
+            # Add to dict
+            scc_results[key] = scc_value
+    
+    # Constructing DataFrame
+    scc_values = pd.DataFrame(
+        index=source_names,
+        columns=target_names,
+        data=np.nan
+    )
+
+    for (a, b), scc_value in scc_results.items():
+        if a in scc_values.index and b in scc_values.columns:
+            scc_values.loc[a, b] = scc_value
+        if b in scc_values.index and a in scc_values.columns:
+            scc_values.loc[b, a] = scc_value
+
+    return scc_values
 
 def sample_scc_dist(x1, x2, bin_size, h=1, d_bp_max=1_000_000, b_down_sample=False, 
                    chr_names = None, chr_exclude = None, chr_lengths = None):
