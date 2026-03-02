@@ -372,6 +372,62 @@ def bin_contact_map(matrix : np.ndarray, bin_size : int):
 
     return binned_matrix
 
+def compile_hic_reads(coolers: list[cooler.Cooler], chrom: str, ) -> pd.DataFrame:
+    '''
+        Takes a list of coolers and a chromosome and returns a dataframe
+        summarizing the data in all coolers, with genomic coordinates as
+        the indices as (i, j) and read counts per cell in the columns
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to consider
+        chrom : str
+            Chromosome to consider.
+        
+        Returns
+        -------
+        compiled_reads : pd.DataFrame
+            Summary of reads with coordinates as indices and reads per
+            cell in columns
+    '''
+    # Set reference binsize and coordinates
+    ref_clr = coolers[0]
+    ref_binsize = ref_clr.binsize
+    ref_region = fetch_region(ref_clr, chrom=chrom)
+
+    maskrows, maskcols = np.triu_indices(ref_region.shape[0])
+    
+        # Create multi-index
+    index = pd.MultiIndex.from_arrays(
+        [maskrows, maskcols],
+        names=["bin_i", "bin_j"]
+    )
+
+    # Dict for converting later
+    compiled_dict = {}
+
+    # Loop through each cooler
+    for clr in coolers:
+        # Check binsize and get name
+        if clr.binsize != ref_binsize:
+            raise ValueError("Binsize not homogenous across input coolers.")
+        name = get_cool_name(clr)
+
+        # Fetch region
+        region = fetch_region(clr, chrom=chrom)
+
+        # Extract points and coordinates
+        values = region[maskrows, maskcols]
+
+        # Add values to dict
+        compiled_dict[name] = values
+    
+    # Convert to dataframe
+    compiled_reads = pd.DataFrame(compiled_dict, index=index)
+
+    return compiled_reads
+
 def bulk_coarsen(in_dir: str, out_dir: str, factor: int) -> None:
     '''
         Takes a directory with .cool files and bins them to the provided
