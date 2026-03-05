@@ -2,7 +2,7 @@ import os
 import cooler
 import pandas as pd
 import numpy as np
-from .hicgeneral import fetch_region, get_cool_name, bin_contact_map
+from .hicgeneral import fetch_region, get_cool_name, bin_contact_map, compile_hic_reads
 from ot import dist, solve, dist_batch, solve_batch
 from hicrep.utils import readMcool, cool2pixels, coolerInfo, getSubCoo, trimDiags, upperDiagCsr, meanFilterSparse
 
@@ -361,6 +361,106 @@ def hic_mask_threshold(matrix : np.ndarray, cut_off : float, type : str = "raw",
 
     return matrix_values, matrix_coords
 
+def hic_calculate_deviance(
+        coolers : list[cooler.Cooler],
+        chrom : str
+    ):
+
+    '''
+        Takes a list of coolers with identical structure and calculates
+        the deviance for each bin.
+
+        Adapted from scry (https://github.com/kstreet13/scry)
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to consider
+        chrom : str
+            Chromosome to consider.
+
+        Returns
+        -------
+        deviance : pd.DataFrame
+            Dataframe describing deviance per genomic coordinate,
+            order in a descending order.
+    '''
+    # Compile reads
+    compiled_reads = compile_hic_reads(coolers, chrom)
+    
+    # Convert to numpy for faster calculations
+    X = compiled_reads.to_numpy(dtype=np.float64)
+
+    # Compute sums per cell
+    sz = X.sum(axis=0)
+
+    # Constructing saturated term
+    P = X / sz
+
+    logP = np.zeros_like(P)
+    mask = P > 0
+    logP[mask] = np.log(P[mask])
+
+    log1P = np.log1p(-P)
+
+    ll_sat = np.sum(
+        X * logP + (sz - X) * log1P,
+        axis=1
+    )
+
+    # Constructing null term
+    sz_sum = np.sum(sz)
+    feature_sums = X.sum(axis=1)
+
+    p = feature_sums / sz_sum 
+    
+    logp = np.zeros_like(p)
+    mask = p > 0
+    logp[mask] = np.log(p[mask])
+
+    log1p = np.log1p(-p)
+
+    ll_null = feature_sums * logp + (sz_sum - feature_sums) * log1p
+
+    # Compute deviance
+    deviance_np = 2 * (ll_sat - ll_null)
+    deviance_np[np.isnan(deviance_np)] = 0.0
+
+    # Convert to dataframe
+    deviance = pd.DataFrame(deviance_np, index=compiled_reads.index, columns=["deviances"])
+
+    # Ordering by deviance
+    deviance = deviance.sort_values(by=["deviances"], ascending=False)
+
+    return deviance
+
+def hic_extract_weights(
+        map : np.ndarray,
+        coords : list[tuple[int, int]]    
+    ):
+    '''
+        Returns the weigths (read counts) from a given map representing
+        (a part of) a chromosome contact matrix.
+
+        Parameters
+        ----------
+        map : np.ndarray
+            (Part of) a chromosome contact matrix.
+        coords : list[tuple[int, int]]
+            List of coordinates to extract.
+        
+        Returns
+        -------
+        values : list[float]
+            List of values associated with the provided coordinates,
+            in the same order as coords.
+    '''
+    values = [] 
+    for i, j in coords:
+        values.append(map[i, j])
+
+    return values
+
 def hic_ot_source_to_targets(source: np.ndarray, targets: list[np.ndarray], cut_off: float = 0, 
                              type: str = 'raw', norm: str = 'none' , unbalanced: float = None,
                              reg: float = None, reg_type: str = "entropy", return_size: bool = False):
@@ -707,6 +807,130 @@ def hic_ot_bulk_clr(sources: list[cooler.Cooler], targets: list[cooler.Cooler], 
     ot_values = pd.DataFrame(
         index=source_names,
         columns=target_names,
+        data=np.nan
+    )
+
+    for (a, b), ot_value in ot_results.items():
+        if a in ot_values.index and b in ot_values.columns:
+            ot_values.loc[a, b] = ot_value
+        if b in ot_values.index and a in ot_values.columns:
+            ot_values.loc[b, a] = ot_value
+
+    return ot_values
+
+def hic_ot_bulk_deviance(
+        coolers: list[cooler.Cooler], 
+        chrom: str,
+        top_contacts : int, 
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="entropy"
+        ) -> pd.DataFrame:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        prvided coolers. Inputs are coolers to prevent double calculations. 
+        Selects contacts to consider based on deviance.
+
+        TODO:
+            - Add binning.
+            - Add error/warning if maps are not of equal size.
+
+        Parameters
+        ----------
+        sources : list[cooler.Cooler]
+            List of source coolers.
+        targets : list[cooler.Cooler]
+            List of target coolers.
+        chrom : str
+            Chromosome to compare.
+        top_contacts : int
+            Top number of contacts to consider, based on deviance.
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "entropy"
+
+        Returns
+        -------
+        ot_results : pd.DataFrame
+            OT results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Errors
+    if norm not in ["none", "sum", "max"]:
+        raise ValueError(f"Invalid normalization type: {norm}")
+
+    # Getting chromosome and cooler names
+    chrs = []
+    names = []
+
+    for cooler in coolers:
+        chrs.append(fetch_region(cooler, chrom))
+        names.append(get_cool_name(cooler))
+    
+    # Select top contacts
+    deviance = hic_calculate_deviance(coolers, chrom).head(top_contacts)
+    coords = deviance.index
+    del deviance
+
+    # Defining cost matrix
+    M = dist(coords)
+
+    # Extracting weights
+    values = []
+    for chr_map in chrs:
+        weights = hic_extract_weights(chrs, coords)
+        if norm == "max":
+            weights = weights / np.max(weights)
+        if norm == "sum":
+            weights = weights / np.sum(weights)
+        values.append(weights)
+    
+    del coords
+
+    # OT
+        # Create empty dict
+    ot_results = {}
+
+        # Loop through all sources (coords, values, names)
+    for i, s_name in enumerate(names):
+        # Loop through all targets (coords, values, names)
+        for j, t_name in enumerate(names):
+            # Key for dict
+            key = tuple(sorted((s_name, t_name)))
+
+            # Check if the same and assign 0
+            if s_name == t_name:
+                ot_value = 0
+            # Check if comparison has already been performed
+            elif key in ot_results:
+                ot_value = ot_results[key]
+            # Perform compariuson
+            else:
+                if unbalanced is None:
+                    if norm != 'sum':
+                        raise ValueError("Exact OT requires sum normalization.")
+                    ot_value = solve(M, values[i], values[j], reg=reg, reg_type=reg_type).value
+                else:
+                    ot_value = solve(M, values[i], values[j], unbalanced=unbalanced, reg=reg, reg_type=reg_type).value
+                
+            # Add to dict
+            ot_results[key] = ot_value
+    
+    # Constructing DataFrame
+    ot_values = pd.DataFrame(
+        index=names,
+        columns=names,
         data=np.nan
     )
 
