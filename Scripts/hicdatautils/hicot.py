@@ -436,7 +436,7 @@ def hic_calculate_deviance(
 
 def hic_extract_weights(
         map : np.ndarray,
-        coords : list[tuple[int, int]]    
+        coords : np.ndarray  
     ):
     '''
         Returns the weigths (read counts) from a given map representing
@@ -447,7 +447,7 @@ def hic_extract_weights(
         map : np.ndarray
             (Part of) a chromosome contact matrix.
         coords : list[tuple[int, int]]
-            List of coordinates to extract.
+            Array of coordinates.
         
         Returns
         -------
@@ -455,9 +455,7 @@ def hic_extract_weights(
             List of values associated with the provided coordinates,
             in the same order as coords.
     '''
-    values = [] 
-    for i, j in coords:
-        values.append(map[i, j])
+    values = map[coords[:, 0], coords[:, 1]]
 
     return values
 
@@ -838,10 +836,8 @@ def hic_ot_bulk_deviance(
 
         Parameters
         ----------
-        sources : list[cooler.Cooler]
-            List of source coolers.
-        targets : list[cooler.Cooler]
-            List of target coolers.
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
         chrom : str
             Chromosome to compare.
         top_contacts : int
@@ -880,16 +876,18 @@ def hic_ot_bulk_deviance(
     
     # Select top contacts
     deviance = hic_calculate_deviance(coolers, chrom).head(top_contacts)
-    coords = deviance.index
+    coords = np.asarray([list(ij) for ij in deviance.index.values])
     del deviance
 
     # Defining cost matrix
-    M = dist(coords)
+    M = dist(coords, coords)
 
     # Extracting weights
     values = []
+    eps = 1e-15
     for chr_map in chrs:
-        weights = hic_extract_weights(chrs, coords)
+        weights = hic_extract_weights(chr_map, coords)
+        weights = np.maximum(weights, eps) # 0 values break OT, may introduce bias.
         if norm == "max":
             weights = weights / np.max(weights)
         if norm == "sum":
@@ -906,6 +904,8 @@ def hic_ot_bulk_deviance(
     for i, s_name in enumerate(names):
         # Loop through all targets (coords, values, names)
         for j, t_name in enumerate(names):
+            print(f"Starting OT ({i*len(names)+j}/{len(names)**2})")
+
             # Key for dict
             key = tuple(sorted((s_name, t_name)))
 
