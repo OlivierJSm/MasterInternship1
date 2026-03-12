@@ -80,6 +80,61 @@ def import_cool_dir(dir: str, resolution: int = None, include: list[str] = None)
     # Import all files as cooler objects
     return clrs
 
+def subset_clr_data(
+        data_dir: str, 
+        metadata: pd.DataFrame, 
+        count: int=20, 
+        seed: int=42,
+        name_col: str = "cell_name",
+        type_col: str="cell_type"
+        ) -> list[cooler.Cooler]:
+    '''
+        Takes a directory of cooler files, selects the number of cells specified
+        by count per cell line given in metadata.
+
+        Function is specific to formatting in this notebook.
+
+        Parameters
+        ----------
+        data_dir : str
+            The path to the folder containing the data.
+        metadata : pd.DataFrame
+            Metadata dataframe providing a mapping for file to cell
+            line.
+        count : int
+            Number of cells to import per cell line.
+            Default = 20.
+        seed : int
+            Seed used for randomization
+            Default = 42.
+        name_col : str
+            Name of the column providing cell names in the metadata.
+            Default = "cell_name".
+        type_col : str
+            Name of the column providing cell types/lines in the metadata.
+            Default = "cell_type".
+
+        Returns
+        -------
+        clrs_subset : list(cooler.Cooler)
+            List of coolers from specified subset.
+    '''
+    # Selecting files
+    sampled_files = (
+        metadata.groupby(type_col)
+                .apply(lambda x: x.sample(
+                    n=min(len(x), count),
+                    replace=False,
+                    random_state=seed
+                ))
+                .reset_index(drop=True)
+    )
+    samples = list(sampled_files[name_col])
+
+    # Importing coolers
+    clrs_subset = import_cool_dir(data_dir, include=samples)
+    return clrs_subset
+
 def fetch_region(clr: cooler.api.Cooler, chrom: str, start: int = None, end: str = None,
                  balanced: bool = False):
     '''

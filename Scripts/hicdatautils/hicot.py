@@ -823,7 +823,7 @@ def hic_ot_bulk_deviance(
         norm: str='none', 
         unbalanced: float|None=None,
         reg: float|None=None, 
-        reg_type: str="entropy"
+        reg_type: str="kl"
         ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
@@ -854,7 +854,7 @@ def hic_ot_bulk_deviance(
             Default = None, uses exact OT instead.
         reg_type : str
             Type of regularization used.
-            Default = "entropy"
+            Default = "kl"
 
         Returns
         -------
