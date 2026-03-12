@@ -2,6 +2,10 @@ import os
 import cooler
 import pandas as pd
 import numpy as np
+from itertools import combinations
+from joblib import Parallel, delayed
+from functools import partial
+from tqdm import tqdm
 from .hicgeneral import fetch_region, get_cool_name, bin_contact_map, compile_hic_reads
 from ot import dist, solve, dist_batch, solve_batch
 from hicrep.utils import readMcool, cool2pixels, coolerInfo, getSubCoo, trimDiags, upperDiagCsr, meanFilterSparse
@@ -939,6 +943,130 @@ def hic_ot_bulk_deviance(
             ot_values.loc[a, b] = ot_value
         if b in ot_values.index and a in ot_values.columns:
             ot_values.loc[b, a] = ot_value
+
+    return ot_values
+
+def hic_ot_bulk_deviance_parallel(
+        coolers: list[cooler.Cooler], 
+        chrom: str,
+        top_contacts : int, 
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="kl"
+        ) -> pd.DataFrame:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        prvided coolers. Inputs are coolers to prevent double calculations. 
+        Selects contacts to consider based on deviance. Uses parallelization
+        to speed up calculations.
+
+        TODO:
+            - Add binning.
+            - Add error/warning if maps are not of equal size.
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
+        chrom : str
+            Chromosome to compare.
+        top_contacts : int
+            Top number of contacts to consider, based on deviance.
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "kl"
+
+        Returns
+        -------
+        ot_results : pd.DataFrame
+            OT results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Errors
+    if norm not in ["none", "sum", "max"]:
+        raise ValueError(f"Invalid normalization type: {norm}")
+
+    # Getting chromosome and cooler names
+    chrs = []
+    names = []
+
+    for cooler in coolers:
+        chrs.append(fetch_region(cooler, chrom))
+        names.append(get_cool_name(cooler))
+    
+    # Select top contacts
+    deviance = hic_calculate_deviance(coolers, chrom).head(top_contacts)
+    coords = np.asarray([list(ij) for ij in deviance.index.values])
+    del deviance
+
+    # Defining cost matrix
+    M = dist(coords, coords)
+
+    # Extracting weights
+    values = []
+    eps = 1e-15
+    for chr_map in chrs:
+        weights = hic_extract_weights(chr_map, coords)
+        weights = np.maximum(weights, eps) # 0 values break OT, may introduce bias.
+        values.append(weights)
+    
+    values = np.vstack(values)
+    if norm == "max":
+        values = values / values.max(axis=1, keepdims=True)
+    if norm == "sum":
+        values = values / values.sum(axis=1, keepdims=True)
+
+    del coords
+
+    # Parallelized OT
+    pairs = combinations(range(len(names)), 2)
+
+        # Pre-configured partial function to speed up calls
+    if unbalanced is None:
+        if norm != 'sum':
+            raise ValueError("Balanced OT requires sum normalization.")
+        ot_solver = partial(
+            solve,
+            M,
+            reg=reg,
+            reg_type=reg_type
+        )
+    else:
+        ot_solver = partial(
+            solve,
+            M,
+            unbalanced=unbalanced,
+            reg=reg,
+            reg_type=reg_type
+        )
+
+        # Function for single comparison
+    def compute_pair(pair):
+        i, j = pair
+        return i, j, ot_solver(values[i], values[j]).value
+
+        # Compute OT losses parallelized
+    results = Parallel(n_jobs=-1, batch_size='auto')(
+        delayed(compute_pair)(pair) 
+        for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
+    )
+
+    ot_values = pd.DataFrame(index=names, columns=names, data=0.0)
+
+    for i, j, val in results:
+        ot_values.iloc[i, j] = val
+        ot_values.iloc[j, i] = val
 
     return ot_values
 
