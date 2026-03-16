@@ -682,7 +682,7 @@ def hic_ot_bulk(sources: list[np.ndarray], targets: list[np.ndarray], thres: flo
 
 def hic_ot_bulk_clr(sources: list[cooler.Cooler], targets: list[cooler.Cooler], chrom: str, res: int|None=None, 
                     thres: float = 0, thres_type: str='raw', norm: str='none' , unbalanced: float|None=None,
-                    reg: float|None=None, reg_type: str="entropy") -> pd.DataFrame:
+                    reg: float|None=None, reg_type: str="kl") -> pd.DataFrame:
     '''
         Performs OT with the specified parameters from source
         hic contact maps to target hic contact maps. Inputs are coolers
@@ -718,7 +718,7 @@ def hic_ot_bulk_clr(sources: list[cooler.Cooler], targets: list[cooler.Cooler], 
             Default = None, uses exact OT instead.
         reg_type : str
             Type of regularization used.
-            Default = "entropy"
+            Default = "kl"
 
         Returns
         -------
@@ -781,6 +781,7 @@ def hic_ot_bulk_clr(sources: list[cooler.Cooler], targets: list[cooler.Cooler], 
     for i, s_name in enumerate(source_names):
         # Loop through all targets (coords, values, names)
         for j, t_name in enumerate(target_names):
+            print(f"Starting OT ({i*len(target_names)+j}/{len(target_names)**2-1})")
             # Key for dict
             key = tuple(sorted((s_name, t_name)))
 
@@ -831,7 +832,7 @@ def hic_ot_bulk_deviance(
         ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
-        prvided coolers. Inputs are coolers to prevent double calculations. 
+        provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on deviance.
 
         TODO:
@@ -908,7 +909,7 @@ def hic_ot_bulk_deviance(
     for i, s_name in enumerate(names):
         # Loop through all targets (coords, values, names)
         for j, t_name in enumerate(names):
-            print(f"Starting OT ({i*len(names)+j}/{len(names)**2})")
+            print(f"Starting OT ({i*len(names)+j}/{len(names)**2-1})")
 
             # Key for dict
             key = tuple(sorted((s_name, t_name)))
@@ -954,10 +955,10 @@ def hic_ot_bulk_deviance_parallel(
         unbalanced: float|None=None,
         reg: float|None=None, 
         reg_type: str="kl"
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
-        prvided coolers. Inputs are coolers to prevent double calculations. 
+        provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on deviance. Uses parallelization
         to speed up calculations.
 
@@ -1062,13 +1063,214 @@ def hic_ot_bulk_deviance_parallel(
         for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
     )
 
-    ot_values = pd.DataFrame(index=names, columns=names, data=0.0)
+    ot_results = pd.DataFrame(index=names, columns=names, data=0.0)
 
     for i, j, val in results:
-        ot_values.iloc[i, j] = val
-        ot_values.iloc[j, i] = val
+        ot_results.iloc[i, j] = val
+        ot_results.iloc[j, i] = val
 
-    return ot_values
+    return ot_results
+
+def hic_ot_bulk_threshold_parallel(
+        coolers: list[cooler.Cooler], 
+        chrom: str,
+        thres: float=0.0,
+        thres_type: str="raw",
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="kl" 
+    ) -> pd.DataFrame:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        provided coolers. Inputs are coolers to prevent double calculations. 
+        Selects contacts to consider based on thresholding. Uses parallelization
+        to speed up calculations.
+
+        TODO:
+            - Add binning.
+            - Add error/warning if maps are not of equal size.
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
+        chrom : str
+            Chromosome to compare.
+        thres : float
+            The cut-off value for setting a threshold in the source and target datasets.
+            Default = 0.
+        thres_type : str
+            The kind of threshold to be set.
+            Options include 'raw' and 'percentile'.
+            Default = 'raw'.
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "kl"
+
+        Returns
+        -------
+        ot_results : pd.DataFrame
+            OT results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Getting chromosome and cooler names
+    chrs = []
+    names = []
+
+    for cooler in coolers:
+        chrs.append(fetch_region(cooler, chrom))
+        names.append(get_cool_name(cooler))
+
+    # Fetching relevant data
+        # Fetch all source and target coords and values
+    masked_values = []
+    masked_coords = []
+
+    for chr_map in chrs:
+        values, coords = hic_mask_threshold(chr_map, thres, thres_type, norm)
+        masked_values.append(np.asarray(values))
+        masked_coords.append(np.asarray(coords))
+    
+    # Parallelized OT
+    pairs = combinations(range(len(names)), 2)
+
+        # Pre-configured partial function to speed up calls
+    if unbalanced is None:
+        if norm != 'sum':
+            raise ValueError("Balanced OT requires sum normalization.")
+        ot_solver = partial(
+            solve,
+            reg=reg,
+            reg_type=reg_type
+        )
+    else:
+        ot_solver = partial(
+            solve,
+            unbalanced=unbalanced,
+            reg=reg,
+            reg_type=reg_type
+        )
+
+        # Function for single comparison
+    def compute_pair(pair):
+        i, j = pair
+        M = dist(masked_coords[i], masked_coords[j])
+        return i, j, ot_solver(M, masked_values[i], masked_values[j]).value
+
+        # Compute OT losses parallelized
+    results = Parallel(n_jobs=-1, batch_size='auto')(
+        delayed(compute_pair)(pair) 
+        for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
+    )
+
+    ot_results = pd.DataFrame(index=names, columns=names, data=0.0)
+
+    for i, j, val in results:
+        ot_results.iloc[i, j] = val
+        ot_results.iloc[j, i] = val
+
+    return ot_results
+
+def hic_ot_optim(
+        coolers: list[cooler.Cooler], 
+        chrom: str,
+        selection: str,
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="kl",
+        top_contacts: int|None=None, 
+        thres: float|None=None,
+        thres_type: str|None=None
+    ) -> pd.DataFrame:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        provided coolers. Inputs are coolers to prevent double calculations. 
+        Selects contacts to consider based on either deviance or a set threshold.
+
+        TODO:
+            - Add binning.
+            - Add error/warning if maps are not of equal size.
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
+        chrom : str
+            Chromosome to compare.
+        selection: str
+            Type of selection criteria to select contacts for OT.
+            Options include "deviance" and "threshold".
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "kl"
+        top_contacts : int
+            Top number of contacts to consider, based on deviance.
+            Default = None, disables deviance selection.
+        thres : float
+            The cut-off value for setting a threshold.
+            Default = None, disables threshold selection
+        thres_type : str
+            The kind of threshold to be set.
+            Options include 'raw' and 'percentile'.
+            Default = None, disables threshold selection.
+
+        Returns
+        -------
+        ot_results : pd.DataFrame
+            OT results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Errors
+        # Normalization
+    if norm not in ["none", "sum", "max"]:
+        raise ValueError(f"Invalid normalization type: {norm}")
+    
+    if selection == "deviance":
+        ot_results = hic_ot_bulk_deviance_parallel(
+            coolers,
+            chrom,
+            top_contacts,
+            norm,
+            unbalanced,
+            reg,
+            reg_type
+        )
+    elif selection == "threshold":
+        ot_results = hic_ot_bulk_threshold_parallel(
+            coolers,
+            chrom,
+            thres,
+            thres_type,
+            norm,
+            unbalanced,
+            reg,
+            reg_type
+        )
+    else:
+        raise ValueError(f"Invalid selection criterium: {selection}")
+    return ot_results
 
 def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float = 0, 
                 thres_type: str = 'raw', norm: str = 'none', reg: float = None, reg_type: str = "entropy"):
