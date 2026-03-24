@@ -41,7 +41,11 @@ def import_cool(file_path: str, resolution: int = None):
 
     return clr
 
-def import_cool_dir(dir: str, resolution: int = None, include: list[str] = None):
+def import_cool_dir(
+        dir: str, 
+        resolution: int = None, 
+        include: list[str] = None, 
+        exclude: list[str] = None):
     '''
         Imports all .cool/.mcool files in the given directory as cooler
         objects.
@@ -55,7 +59,10 @@ def import_cool_dir(dir: str, resolution: int = None, include: list[str] = None)
             Default = None, for single resolution .cool files.
         include : list[str]
             A list of filenames to include when importing.
-            If none, imports all cool files.
+            Default = None, imports all cool files.
+        exclude : list[str]
+            A list of filename to exclude when importing.
+            Default = None, excludes no files.
         
         Returns
         -------
@@ -68,16 +75,19 @@ def import_cool_dir(dir: str, resolution: int = None, include: list[str] = None)
     # Import all
     files = [f for f in folder.glob("*.cool")] + [f for f in folder.glob("*.mcool")]
 
-    # Select subset for include
-    if include is not None:
-        valid = set(Path(v).stem for v in include)
-        files = [f for f in files if f.stem in valid]
+    # Setting includes and excludes
+    include_set = {Path(v).stem for v in include} if include else None
+    exclude_set = {Path(v).stem for v in exclude} if exclude else set()
 
-    # Convert to string and import
-    files = [str(f) for f in files]
-    clrs = [import_cool(f, resolution) for f in files]
+    # Getting files
+    files = [
+        str(f) for f in files
+        if (include_set is None or f.stem in include_set)
+        and f.stem not in exclude_set
+    ]
 
     # Import all files as cooler objects
+    clrs = [import_cool(f, resolution) for f in files]
     return clrs
 
 def subset_clr_data(
@@ -86,7 +96,8 @@ def subset_clr_data(
         count: int=20, 
         seed: int=42,
         name_col: str = "cell_name",
-        type_col: str="cell_type"
+        type_col: str="cell_type",
+        **kwargs
         ) -> list[cooler.Cooler]:
     '''
         Takes a directory of cooler files, selects the number of cells specified
@@ -132,7 +143,7 @@ def subset_clr_data(
     samples = list(sampled_files[name_col])
 
     # Importing coolers
-    clrs_subset = import_cool_dir(data_dir, include=samples)
+    clrs_subset = import_cool_dir(data_dir, include=samples, **kwargs)
     return clrs_subset
 
 def fetch_region(clr: cooler.api.Cooler, chrom: str, start: int = None, end: str = None,

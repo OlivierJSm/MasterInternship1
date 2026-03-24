@@ -954,7 +954,8 @@ def hic_ot_bulk_deviance_parallel(
         norm: str='none', 
         unbalanced: float|None=None,
         reg: float|None=None, 
-        reg_type: str="kl"
+        reg_type: str="kl",
+        n_jobs: int=-1
     ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
@@ -986,7 +987,10 @@ def hic_ot_bulk_deviance_parallel(
             Default = None, uses exact OT instead.
         reg_type : str
             Type of regularization used.
-            Default = "kl"
+            Default = "kl".
+        n_jobs : int
+            Number of jobs given to joblib to parallelize.
+            Default=-1, uses maximum available.
 
         Returns
         -------
@@ -1058,7 +1062,7 @@ def hic_ot_bulk_deviance_parallel(
         return i, j, ot_solver(values[i], values[j]).value
 
         # Compute OT losses parallelized
-    results = Parallel(n_jobs=-1, batch_size='auto')(
+    results = Parallel(n_jobs=n_jobs, batch_size='auto')(
         delayed(compute_pair)(pair) 
         for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
     )
@@ -1079,7 +1083,8 @@ def hic_ot_bulk_threshold_parallel(
         norm: str='none', 
         unbalanced: float|None=None,
         reg: float|None=None, 
-        reg_type: str="kl" 
+        reg_type: str="kl",
+        n_jobs: int=-1 
     ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
@@ -1117,6 +1122,9 @@ def hic_ot_bulk_threshold_parallel(
         reg_type : str
             Type of regularization used.
             Default = "kl"
+        n_jobs : int
+            Number of jobs given to joblib to parallelize.
+            Default=-1, uses maximum available.
 
         Returns
         -------
@@ -1169,7 +1177,7 @@ def hic_ot_bulk_threshold_parallel(
         return i, j, ot_solver(M, masked_values[i], masked_values[j]).value
 
         # Compute OT losses parallelized
-    results = Parallel(n_jobs=-1, batch_size='auto')(
+    results = Parallel(n_jobs=n_jobs, batch_size='auto')(
         delayed(compute_pair)(pair) 
         for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
     )
@@ -1192,7 +1200,8 @@ def hic_ot_optim(
         reg_type: str="kl",
         top_contacts: int|None=None, 
         thres: float|None=None,
-        thres_type: str|None=None
+        thres_type: str|None=None,
+        n_jobs: int=-1
     ) -> pd.DataFrame:
     '''
         Performs pairwise OT with the specified parameters on the
@@ -1235,6 +1244,9 @@ def hic_ot_optim(
             The kind of threshold to be set.
             Options include 'raw' and 'percentile'.
             Default = None, disables threshold selection.
+        n_jobs : int
+            Number of jobs given to joblib to parallelize.
+            Default=-1, uses maximum available.
 
         Returns
         -------
@@ -1255,7 +1267,8 @@ def hic_ot_optim(
             norm,
             unbalanced,
             reg,
-            reg_type
+            reg_type,
+            n_jobs
         )
     elif selection == "threshold":
         ot_results = hic_ot_bulk_threshold_parallel(
@@ -1266,7 +1279,8 @@ def hic_ot_optim(
             norm,
             unbalanced,
             reg,
-            reg_type
+            reg_type,
+            n_jobs
         )
     else:
         raise ValueError(f"Invalid selection criterium: {selection}")
