@@ -438,6 +438,46 @@ def bin_contact_map(matrix : np.ndarray, bin_size : int):
 
     return binned_matrix
 
+def rebin_contact_map(matrix: np.ndarray, factor: int) -> np.ndarray:
+    '''
+        Rebins a square matrix by an integer factor.
+
+        Parameters
+        ----------
+        matrix : np.ndarray
+            Square matrix to be rebinned.
+        factor : int
+            Factor by which to reduce the number of bins per axis.
+
+        Returns
+        -------
+        rebinned : np.ndarray
+            Rebinned matrix where each element is the sum over a
+            (factor x factor) block.
+    '''
+
+    # Validate input
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Input matrix must be square.")
+
+    if factor <= 0:
+        raise ValueError(f"Factor must be positive, got {factor}.")
+
+    n = matrix.shape[0]
+
+    # Determine new size
+    m = n // factor
+    if m == 0:
+        raise ValueError("Factor is larger than matrix size.")
+
+    # Trim matrix if not divisible
+    trimmed = matrix[:m * factor, :m * factor]
+
+    # Rebin by summing blocks
+    rebinned = trimmed.reshape(m, factor, m, factor).sum(axis=(1, 3))
+
+    return rebinned
+
 def compile_hic_reads(coolers: list[cooler.Cooler], chrom: str, ) -> pd.DataFrame:
     '''
         Takes a list of coolers and a chromosome and returns a dataframe

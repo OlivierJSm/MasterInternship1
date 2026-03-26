@@ -6,7 +6,7 @@ from itertools import combinations
 from joblib import Parallel, delayed
 from functools import partial
 from tqdm import tqdm
-from .hicgeneral import fetch_region, get_cool_name, bin_contact_map, compile_hic_reads
+from .hicgeneral import fetch_region, get_cool_name, bin_contact_map, compile_hic_reads, rebin_contact_map
 from ot import dist, solve, dist_batch, solve_batch
 from hicrep.utils import readMcool, cool2pixels, coolerInfo, getSubCoo, trimDiags, upperDiagCsr, meanFilterSparse
 
@@ -1080,6 +1080,7 @@ def hic_ot_bulk_threshold_parallel(
         chrom: str,
         thres: float=0.0,
         thres_type: str="raw",
+        rebin_factor: int|None=None,
         norm: str='none', 
         unbalanced: float|None=None,
         reg: float|None=None, 
@@ -1091,10 +1092,6 @@ def hic_ot_bulk_threshold_parallel(
         provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on thresholding. Uses parallelization
         to speed up calculations.
-
-        TODO:
-            - Add binning.
-            - Add error/warning if maps are not of equal size.
 
         Parameters
         ----------
@@ -1109,6 +1106,10 @@ def hic_ot_bulk_threshold_parallel(
             The kind of threshold to be set.
             Options include 'raw' and 'percentile'.
             Default = 'raw'.
+        rebin_factor " int
+            Factor by which input coolers will be rebinned. Only
+            supported for threshold-based approach.
+            Default = None, uses native resolution.
         norm : str
             Type of normalization to use. Options include "none",
             "max" and "sum".
@@ -1137,7 +1138,11 @@ def hic_ot_bulk_threshold_parallel(
     names = []
 
     for cooler in coolers:
-        chrs.append(fetch_region(cooler, chrom))
+        region = fetch_region(cooler, chrom)
+        if rebin_factor is not None:
+            chrs.append(region)
+        else:
+            chrs.append(rebin_contact_map(region, rebin_factor))
         names.append(get_cool_name(cooler))
 
     # Fetching relevant data
@@ -1201,6 +1206,7 @@ def hic_ot_optim(
         top_contacts: int|None=None, 
         thres: float|None=None,
         thres_type: str|None=None,
+        rebin_factor: int|None=None,
         n_jobs: int=-1
     ) -> pd.DataFrame:
     '''
@@ -1244,6 +1250,10 @@ def hic_ot_optim(
             The kind of threshold to be set.
             Options include 'raw' and 'percentile'.
             Default = None, disables threshold selection.
+        rebin_factor " int
+            Factor by which input coolers will be rebinned. Only
+            supported for threshold-based approach.
+            Default = None, uses native resolution.
         n_jobs : int
             Number of jobs given to joblib to parallelize.
             Default=-1, uses maximum available.
@@ -1260,6 +1270,9 @@ def hic_ot_optim(
         raise ValueError(f"Invalid normalization type: {norm}")
     
     if selection == "deviance":
+        if rebin_factor is not None:
+            print("Rebinning is not supported for deviance approach.")
+
         ot_results = hic_ot_bulk_deviance_parallel(
             coolers,
             chrom,
@@ -1284,6 +1297,7 @@ def hic_ot_optim(
         )
     else:
         raise ValueError(f"Invalid selection criterium: {selection}")
+    
     return ot_results
 
 def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float = 0, 
