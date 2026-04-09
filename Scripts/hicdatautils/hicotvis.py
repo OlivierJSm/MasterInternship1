@@ -3,6 +3,86 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from umap import UMAP
+from scipy import stats
+
+def compare_metrics(
+        metric1_data : pd.DataFrame,
+        metric2_data : pd.DataFrame,
+        metric1_label : str = "Metric 1",
+        metric2_label: str = "Metric 2",
+        figsize : tuple[int, int] = (7, 6),
+        textsize : int = 14
+    ) -> float:
+    '''
+        Generates a scatterplot with a linear trendline to compare
+        two comparison metrics.
+
+        Parameters
+        ----------
+        metric1_data : pd.DataFrame
+            Pairwise comparison matrix.
+        metric2_data : pd.DataFrame
+            Pairwise comparison matrix, must have identical indexing
+            to metric 1.
+        metric1_label : str
+            Label for metric 1.
+            Default = "Metric 1".
+        metric2_label : str
+            Label for metric 2.
+            Default = "Metric 1".
+        figsize: tuple[int, int]
+            Figure size to use.
+            Default = (7, 6)
+        textsize : int
+            Text size to use.
+            Default = 14
+
+        Returns
+        -------
+        r**2 : float
+            Pearson r2 value between OT and SCC values.
+    '''
+    # Ensure identical shapes
+    if metric1_data.shape != metric2_data.shape:
+        raise ValueError("Dataframes are of differing shapes!")
+
+    # Extracting upper triangles
+    mask = np.triu(np.ones(metric1_data.shape, dtype=bool))
+    metric1_values = metric1_data.values[mask]
+    metric2_values = metric2_data.values[mask]
+
+    # Correspondence values
+    r, p = stats.pearsonr(metric1_values, metric2_values)
+
+    # Linear fit
+    slope, intercept = stats.linregress(metric1_values, metric2_values)[0:2]
+    x_line = np.linspace(metric1_values.min(), metric1_values.max(), 200)
+    y_line = slope * x_line + intercept
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.scatter(
+        x=metric1_values,
+        y=metric2_values,
+        marker='s', 
+        c='black'
+    )
+
+    ax.plot(
+        x_line,
+        y_line,
+        color='red',
+        linestyle=":",
+        label=f"Linear fit (Pearson R² = {r**2:.4f})"
+    )
+
+    ax.set_xlabel(metric1_label, fontsize=textsize)
+    ax.set_ylabel(metric2_label, fontsize=textsize)
+    ax.legend()
+    plt.tight_layout()
+
+    return r**2
 
 def generate_clustermap(
         ot_data : pd.DataFrame,

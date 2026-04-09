@@ -174,7 +174,7 @@ def hic_vis_region(clr: cooler.api.Cooler, chrom: str, start: int = 0,
     # Cmap doesn't exist
     if cmap != None and cmap not in cmaps.keys():
         raise ValueError(
-            f"Invalid map '{cmap}'. Choose from {cmaps.keys()} or leave as None"    # Not very elegant, but works
+            f"Invalid map '{cmap}'. Choose from {cmaps.keys()} or leave as None" 
         )
     
     # Choose colormap (select from dict if not default) 
@@ -234,6 +234,90 @@ def hic_vis_region(clr: cooler.api.Cooler, chrom: str, start: int = 0,
     stats = {"sum": vsum, "max": vmax, "min": vmin}
 
     return stats
+
+def hic_vis_region_zoom(
+        clr: cooler.api.Cooler, 
+        chrom: str,
+        title: str=None, 
+        cmap: str=None, 
+        ax: plt.Axes|None=None,
+        **kwargs
+    ) -> None:
+    '''
+        Visualizes the specified region from a provided cooler
+        with minimal visual details, zooming in on regions with values.
+
+        Parameters
+        ----------
+        clr : cooler.api.Cooler 
+            A cooler object for a single cell Hi-C dataset.
+        chrom : str      
+            The chromosome that should be visualized.
+        title : str      
+            Desired figure title.
+            Default = None, uses a default title.
+        cmap : str 
+            Color map for visualization. Options include standard color 
+            scheme (None, default), juicebox and higlass.
+            Default = None.
+        ax : plt.Axes
+            Optional argument to allow function to add to subfigures
+            rather than create a whole new figure.
+            Default = None.
+        
+        Other Parameters
+        ----------------
+        **kwargs
+            Arguments passed to imshow().
+        
+        Returns
+        -------
+        ax : plt.Axes
+            Axes object containing the plot.
+    '''
+    # Cmap doesn't exist
+    if cmap != None and cmap not in cmaps.keys():
+        raise ValueError(
+            f"Invalid map '{cmap}'. Choose from {cmaps.keys()} or leave as None" 
+        )
+    
+    # Choose colormap (select from dict if not default) 
+    if cmap != None:
+        cmap = cmaps[cmap]
+    
+    # Fetching chromosome
+    matrix = clr.matrix(balance=False).fetch(chrom)
+    matrix = np.nan_to_num(matrix, nan=0.0)
+
+    # Find the first and last bins that contain at least one non-zero value
+    nonzero_bins = np.where(matrix.any(axis=1))[0]
+    if nonzero_bins.size == 0:
+        raise ValueError(f"Contact matrix for {chrom} contains only zero values.")
+    first, last = nonzero_bins[0], nonzero_bins[-1] + 1
+    matrix = matrix[first:last, first:last]
+
+    # Initialize figure if not passed
+    if ax is None:
+        _, ax = plt.subplots(figsize=(4, 4))
+
+    # Arguments for imshow
+    imshow_kwargs = dict(
+        cmap=cmap,
+        norm=LogNorm(vmax=matrix.max()),
+        aspect="auto",
+    )
+    imshow_kwargs.update(kwargs)
+
+    # Visualizing
+    img = ax.imshow(matrix, **imshow_kwargs)
+
+    # Formatting axes
+    ax.set_title(title)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_ylabel(f"Chromosome {chrom}", rotation='vertical')
+
+    return ax
 
 def hic_vis_matrix(matrix : np.ndarray, title: str, data_type: str="raw",
                    cmap: str=None, ax=None):

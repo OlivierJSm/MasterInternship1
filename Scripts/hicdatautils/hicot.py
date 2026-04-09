@@ -2,6 +2,7 @@ import os
 import cooler
 import pandas as pd
 import numpy as np
+import gc
 from itertools import combinations
 from joblib import Parallel, delayed
 from functools import partial
@@ -1106,7 +1107,7 @@ def hic_ot_bulk_threshold_parallel(
             The kind of threshold to be set.
             Options include 'raw' and 'percentile'.
             Default = 'raw'.
-        rebin_factor " int
+        rebin_factor : int
             Factor by which input coolers will be rebinned. Only
             supported for threshold-based approach.
             Default = None, uses native resolution.
@@ -1139,7 +1140,7 @@ def hic_ot_bulk_threshold_parallel(
 
     for cooler in coolers:
         region = fetch_region(cooler, chrom)
-        if rebin_factor is not None:
+        if rebin_factor is None:
             chrs.append(region)
         else:
             chrs.append(rebin_contact_map(region, rebin_factor))
@@ -1182,10 +1183,14 @@ def hic_ot_bulk_threshold_parallel(
         return i, j, ot_solver(M, masked_values[i], masked_values[j]).value
 
         # Compute OT losses parallelized
-    results = Parallel(n_jobs=n_jobs, batch_size='auto')(
-        delayed(compute_pair)(pair) 
-        for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
-    )
+    try:
+        results = Parallel(n_jobs=n_jobs, batch_size='auto')(
+            delayed(compute_pair)(pair) 
+            for pair in tqdm(pairs, total=len(names)*(len(names)-1)//2)
+        )
+    finally:
+        del masked_values, masked_coords
+        gc.collect()
 
     ot_results = pd.DataFrame(index=names, columns=names, data=0.0)
 
@@ -1289,6 +1294,7 @@ def hic_ot_optim(
             chrom,
             thres,
             thres_type,
+            rebin_factor,
             norm,
             unbalanced,
             reg,
@@ -1298,6 +1304,116 @@ def hic_ot_optim(
     else:
         raise ValueError(f"Invalid selection criterium: {selection}")
     
+    return ot_results
+
+def hic_ot_bulk_threshold_sequential(
+        coolers: list[cooler.Cooler], 
+        chrom: str,
+        thres: float=0.0,
+        thres_type: str="raw",
+        rebin_factor: int|None=None,
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="kl",
+    ) -> pd.DataFrame:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        provided coolers. Inputs are coolers to prevent double calculations. 
+        Selects contacts to consider based on thresholding. Calculates each cost
+        sequentially. Use for larger OT problems instead of hic_ot_bulk_threshold_sequential.
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
+        chrom : str
+            Chromosome to compare.
+        thres : float
+            The cut-off value for setting a threshold in the source and target datasets.
+            Default = 0.
+        thres_type : str
+            The kind of threshold to be set.
+            Options include 'raw' and 'percentile'.
+            Default = 'raw'.
+        rebin_factor : int
+            Factor by which input coolers will be rebinned. Only
+            supported for threshold-based approach.
+            Default = None, uses native resolution.
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "kl"
+
+        Returns
+        -------
+        ot_results : pd.DataFrame
+            OT results in a dataframe with cooler names as
+            row and column indices.
+    '''
+    # Getting chromosome and cooler names
+    chrs = []
+    names = []
+
+    for cooler in coolers:
+        region = fetch_region(cooler, chrom)
+        if rebin_factor is None:
+            chrs.append(region)
+        else:
+            chrs.append(rebin_contact_map(region, rebin_factor))
+        names.append(get_cool_name(cooler))
+
+    # Fetching relevant data
+        # Fetch all source and target coords and values
+    masked_values = []
+    masked_coords = []
+
+    for chr_map in chrs:
+        values, coords = hic_mask_threshold(chr_map, thres, thres_type, norm)
+        masked_values.append(np.asarray(values))
+        masked_coords.append(np.asarray(coords))
+    
+    # Parallelized OT
+    pairs = combinations(range(len(names)), 2)
+
+        # Pre-configured partial function to speed up calls
+    if unbalanced is None:
+        if norm != 'sum':
+            raise ValueError("Balanced OT requires sum normalization.")
+        ot_solver = partial(
+            solve,
+            reg=reg,
+            reg_type=reg_type
+        )
+    else:
+        ot_solver = partial(
+            solve,
+            unbalanced=unbalanced,
+            reg=reg,
+            reg_type=reg_type
+        )
+    
+    # Initializing results
+    ot_results = pd.DataFrame(index=names, columns=names, data=0.0)
+
+    # Sequential calculation
+    pairs = combinations(range(len(names)), 2)
+    for i, j in tqdm(pairs, total=len(names) * (len(names) - 1) // 2):
+        M = dist(masked_coords[i], masked_coords[j])
+        ot_results.iloc[i, j] = ot_solver(M, masked_values[i], masked_values[j]).value
+        ot_results.iloc[j, i] = ot_results.iloc[i, j]
+        del M
+        gc.collect()
+
     return ot_results
 
 def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float = 0, 
