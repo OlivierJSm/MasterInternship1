@@ -234,8 +234,10 @@ def generate_umap(
         name_col: str = "cell_name",
         type_col: str = "cell_type",
         group_map: dict|None=None,
-        ax = None
-    ) -> None:
+        palette : dict|None = None,
+        ax = None,
+        figsize : tuple[int, int]|None=None
+    ) -> list :
     '''
         Generates a UMAP based on the provided OT results.
 
@@ -258,12 +260,24 @@ def generate_umap(
             Dictionary with cell types as keys and umbrella cell types as vales. 
             Allows celltypes to be clustered together.
             Default = None
+        palette : dict
+            Dictonary that maps groups in metadata or in the group_map to specific
+            colors.
+            Default = None, automatically asigns colors.
         ax
             Axes object to add to.
             Default = None, creates a new figure.
+        figsize : tuple[int, int]
+            Size of the figure if ax is None.
+            Default = None, uses standard figsize.
+
+        Returns
+        -------
+        vec : list
+            UMAP embeddings of each cell in the same order as ot_data.
         
         TODO:
-        - Add support for changing figure size.
+        - Add support for changing text size.
     '''
     # Converting to ndarray
     ot_ndarray = ot_data.to_numpy()
@@ -281,21 +295,26 @@ def generate_umap(
 
     # Figure
     if ax is None:
-        fig, ax = plt.subplots()
+        if figsize is not None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig, ax = plt.subplots()
         if title is not None:
             ax.set_title(title, fontweight="bold")
     elif title is not None:
         ax.set_title(title)
 
-
-    sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=20)
+    if palette is None:
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=20)
+    else:
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=20)
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
     ax.legend(handles=handles, labels=labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., ncol=1)
     ax.set_xticks([])
     ax.set_yticks([])
 
-    return
+    return vec
 
 def generate_violin_plot(
         clrs : list[cooler.Cooler],

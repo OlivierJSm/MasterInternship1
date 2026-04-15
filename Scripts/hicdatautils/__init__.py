@@ -5,7 +5,7 @@ from .hicot import get_diag_csr, distance_weights, hic_ot_chr_value, hic_mask_th
 from .hicgeneral import import_cool, get_chrs, standardize_coolers, standardize_coolers_ref, import_cool_dir, get_cool_name, standardize_coolers_bulk, fetch_region, bin_contact_map, bulk_coarsen, compile_hic_reads, subset_clr_data, rebin_contact_map
 from .hictests import generate_contact_map, generate_related_contact_map, visualize_synthetic_maps
 from .hictoscc import compare_to_scc, compare_to_scc_df
-from .hicdatahandling import long_transform, ot_mass_deviance
+from .hicdatahandling import long_transform, ot_mass_deviance, ot_mass_threshold
 from .hicotvis import generate_clustermap, generate_marginal_plot, generate_umap, compare_metrics, generate_violin_plot
 
 __all__ = ["calc_scc_file", "avg_scc", "avg_scc_weighted", "bulk_compare", "get_chrs", 
@@ -22,4 +22,4 @@ __all__ = ["calc_scc_file", "avg_scc", "avg_scc_weighted", "bulk_compare", "get_
            "subset_clr_data", "long_transform", "ot_mass_deviance", "generate_clustermap",
            "generate_marginal_plot", "hic_ot_bulk_deviance_parallel", "hic_ot_bulk_threshold_parallel",
            "hic_ot_optim", "generate_umap", "rebin_contact_map", "hic_ot_bulk_threshold_sequential", 
-           "compare_metrics", "generate_violin_plot"]
+           "compare_metrics", "generate_violin_plot", "ot_mass_threshold"]
