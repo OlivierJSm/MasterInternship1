@@ -1219,10 +1219,6 @@ def hic_ot_optim(
         provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on either deviance or a set threshold.
 
-        TODO:
-            - Add binning.
-            - Add error/warning if maps are not of equal size.
-
         Parameters
         ----------
         coolers : list[cooler.Cooler]
@@ -1321,7 +1317,7 @@ def hic_ot_bulk_threshold_sequential(
         Performs pairwise OT with the specified parameters on the
         provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on thresholding. Calculates each cost
-        sequentially. Use for larger OT problems instead of hic_ot_bulk_threshold_sequential.
+        sequentially. Use for larger OT problems instead of hic_ot_bulk_threshold_parallel.
 
         Parameters
         ----------

@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from umap import UMAP
 from scipy import stats
+import cooler
+from . import get_cool_name
 
 def compare_metrics(
         metric1_data : pd.DataFrame,
@@ -86,7 +88,8 @@ def compare_metrics(
 
 def generate_clustermap(
         ot_data : pd.DataFrame,
-        title : str
+        title : str|None = None,
+        **kwargs
     ) -> None:
     '''
         Generates a clustermap based on the provided OT data in long
@@ -97,7 +100,10 @@ def generate_clustermap(
         ot_data : pd.DataFrame
             OT data in long form.
         title : str
-            Title of the figure
+            Title of the figure.
+            Default = None
+        **kwargs
+            Arguments to pass to sns.clustermap
 
         Returns
         -------
@@ -112,16 +118,24 @@ def generate_clustermap(
     heatmap_data = mean_matrix.unstack()
 
     # Clustermap
-    sns.clustermap(heatmap_data, annot=True, fmt='.1f', cmap='viridis')
-    plt.suptitle(title, fontweight='bold')
-    plt.tight_layout()
-
+    g = sns.clustermap(
+        heatmap_data, 
+        cmap='viridis',
+        **kwargs)
+    if title is not None:
+        plt.suptitle(title, fontweight='bold')
+    g.ax_heatmap.set_xlabel('')
+    g.ax_heatmap.set_ylabel('')
+    g.ax_heatmap.xaxis.set_ticks_position('bottom')
+    g.ax_heatmap.tick_params(axis='x', length=5)
+    plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha="right")
     return
 
 def generate_marginal_plot(
         ot_data : pd.DataFrame,
         mass_df : pd.DataFrame,
-        title : str
+        cell_name_col : str = "file_name",
+        title : str|None=None
     ) -> None:
     '''
         Generates a marginal plot for the OT data using the mass considered per cell.
@@ -132,18 +146,25 @@ def generate_marginal_plot(
             OT data in long form.
         mass_df : pd.DataFrame
             Dataframe providing the mass considered per file.
+        cell_name_col : str
+            Name of the column in the mass dataframe that gives the cell
+            name.
         title : str
-            Title of the figure
+            Title of the figure.
+            Default = None
         
         Returns
         -------
         None
+
+        TODO:
+        - Add support for changing figure size.
     '''
     sns.set_theme(style="white")
 
     # Adding mass data
     mass_map = mass_df.copy()
-    mass_map = mass_map.set_index('cell_name')['total_mass']
+    mass_map = mass_map.set_index(cell_name_col)['total_mass']
 
     # Adding row and col masses
     long_df_mass = ot_data.copy()
@@ -201,16 +222,18 @@ def generate_marginal_plot(
     g.set_axis_labels('Mass Difference', 'log(OT Loss)')
 
     # Title
-    g.figure.suptitle(title, fontweight='bold')
+    if title is not None:
+        g.figure.suptitle(title, fontweight='bold')
     g.figure.tight_layout(rect=[0, 0, 1, 0.98])
     return
 
 def generate_umap(
         ot_data: pd.DataFrame,
         metadata: pd.DataFrame,
-        title: str,
+        title: str|None=None,
         name_col: str = "cell_name",
         type_col: str = "cell_type",
+        group_map: dict|None=None,
         ax = None
     ) -> None:
     '''
@@ -224,15 +247,23 @@ def generate_umap(
             Metadata providing the cell type/line per file name.
         title : str
             Title for the figure.
+            Default = None.
         name_col : str
             Name of the column providing cell names in the metadata.
             Default = "cell_name".
         type_col : str
             Name of the column providing cell types/lines in the metadata.
             Default = "cell_type".
+        group_map : dict
+            Dictionary with cell types as keys and umbrella cell types as vales. 
+            Allows celltypes to be clustered together.
+            Default = None
         ax
             Axes object to add to.
             Default = None, creates a new figure.
+        
+        TODO:
+        - Add support for changing figure size.
     '''
     # Converting to ndarray
     ot_ndarray = ot_data.to_numpy()
@@ -240,18 +271,20 @@ def generate_umap(
     # Extracting cell types
     cell_types = []
     for cell in ot_data.index:
-        specific_type = metadata[metadata[name_col] == cell][type_col].values[0]
+        specific_type = metadata.loc[metadata[name_col] == cell, type_col].values[0]
+        specific_type = group_map.get(specific_type, specific_type) if group_map else specific_type
+
+        cell_types.append(specific_type)
 
     # Generating UMAP
     vec = UMAP(n_components=2).fit_transform(ot_ndarray)
-    xlab = "UMAP 1"
-    ylab = "UMAP 2"
 
     # Figure
     if ax is None:
         fig, ax = plt.subplots()
-        ax.set_title(title, fontweight="bold")
-    else:
+        if title is not None:
+            ax.set_title(title, fontweight="bold")
+    elif title is not None:
         ax.set_title(title)
 
 
@@ -259,7 +292,93 @@ def generate_umap(
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
     ax.legend(handles=handles, labels=labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., ncol=1)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    return
+
+def generate_violin_plot(
+        clrs : list[cooler.Cooler],
+        metadata : pd.DataFrame,
+        cell_name_col : str = "cell_name",
+        cell_type_col : str = "cell_type",
+        ax = None,
+        fig_size : tuple[int, int]|None = None
+) -> None:
+    '''
+        Takes coolers and metadata information to generate violin
+        plots describing the total Hi-C contacts per cell per included cell
+        type.
+
+        Parameters
+        ----------
+        clrs : list[cooler.Cooler]
+            List of coolers to consider.
+        metadata : pd.DataFrame
+            Dataframe with cell type information on
+            provided coolers.
+        cell_name_col : str
+            The name of the column with the names of cells
+            in the metadata dataframe.
+        cell_type_col : str
+            The name of the column with the types of cells
+            in the metadata dataframe.
+        ax :
+            Axes object to pass figure to. Creates a new figure
+            if left empty.
+        fig_size : tuple[int, int]
+            Desired figure size if ax is not provided.
+    '''
+    # Extracting masses
+    totals = []
+    names = []
+    for clr in clrs:
+        totals.append(clr.info["sum"])
+        names.append(get_cool_name(clr))
+
+        # To df
+    totals_df = pd.DataFrame({
+        cell_name_col : names,
+        "total" : totals
+    })
+
+        # Merge with metadata
+    totals_df = totals_df.merge(metadata, on=cell_name_col)
+
+    # Constructing figure
+    if ax is None:
+        if fig_size is None:
+            fig, ax = plt.subplots()
+        else:
+            fig, ax = plt.subplots(figsize=fig_size)
+
+    sns.violinplot(
+        data=totals_df.sort_values(by=[cell_type_col]),
+        ax=ax,
+        x=cell_type_col,
+        y="total",
+        hue=cell_type_col,
+        cut=0
+    )
+    ax.set_ylabel("Counts")
+    ax.set_xlabel("")
+    ax.set_ylim(bottom=0)
+
+    # Adding counts to graphs
+    counts = totals_df[cell_type_col].value_counts()
+    y_max = totals_df.groupby(cell_type_col)["total"].max()
+    y_min, y_max_plot = ax.get_ylim()
+    ax.set_ylim(y_min, y_max_plot * 1.05)
+    for i, cell_type in enumerate(ax.get_xticklabels()):
+        ct = cell_type.get_text()
+        ax.text(
+            i,
+            y_max[ct] * 1.03,
+            f"n = {counts[ct]}",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            fontstyle='italic'
+        )
 
     return

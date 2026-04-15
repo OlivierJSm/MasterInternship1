@@ -93,10 +93,11 @@ def import_cool_dir(
 def subset_clr_data(
         data_dir: str, 
         metadata: pd.DataFrame, 
-        count: int=20, 
+        count: int|None = None, 
         seed: int=42,
         name_col: str = "cell_name",
         type_col: str="cell_type",
+        iqr_rule : float|None = None,
         **kwargs
         ) -> list[cooler.Cooler]:
     '''
@@ -114,7 +115,7 @@ def subset_clr_data(
             line.
         count : int
             Number of cells to import per cell line.
-            Default = 20.
+            Default = None, uses maximum number.
         seed : int
             Seed used for randomization
             Default = 42.
@@ -124,17 +125,60 @@ def subset_clr_data(
         type_col : str
             Name of the column providing cell types/lines in the metadata.
             Default = "cell_type".
+        iqr_rule : float
+            Value to use when trimming out cells using the interquartile
+            range rule. For example, if iqr=1.5, removes all cells that have
+            a total number of counts outside of [Q1 - 1.5xIQR, Q3 + 1.5xIQR].
+            Default = None, imports all coolers.
+        **kwargs
+            Arguments to pass to import_cool_dir.
 
         Returns
         -------
         clrs_subset : list(cooler.Cooler)
             List of coolers from specified subset.
     '''
+    # Trimming outliers
+    if iqr_rule is not None:
+            # Import all coolers
+        clrs = import_cool_dir(data_dir, **kwargs)
+
+            # Extracting masses
+        totals = []
+        names = []
+        for clr in clrs:
+            totals.append(clr.info["sum"])
+            names.append(get_cool_name(clr))
+
+            # To df
+        totals_df = pd.DataFrame({
+            name_col : names,
+            "total" : totals
+        })
+
+            # Merge with metadata
+        totals_df = totals_df.merge(metadata, on=name_col)
+
+            # IQR rule
+        q1 = np.percentile(totals_df["total"], 25)
+        q3 = np.percentile(totals_df["total"], 75)
+        iqr = q3 - q1
+        lower = q1 - iqr_rule * iqr
+        upper = q3+ iqr_rule * iqr
+
+            # Fetching outliers
+        totals_df_outliers = totals_df[
+            (totals_df["total"] > upper) |
+            (totals_df["total"] < lower)
+        ]
+
+        metadata = metadata[~metadata[name_col].isin(totals_df_outliers[name_col])]
+
     # Selecting files
     sampled_files = (
         metadata.groupby(type_col)
                 .apply(lambda x: x.sample(
-                    n=min(len(x), count),
+                    n=len(x) if count is None else min(len(x), count),
                     replace=False,
                     random_state=seed
                 ))
