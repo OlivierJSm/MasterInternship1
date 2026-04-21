@@ -903,50 +903,45 @@ def hic_ot_bulk_deviance(
     del coords
 
     # OT
-        # Create empty dict
-    ot_results = {}
+    pairs = combinations(range(len(names)), 2)
 
-        # Loop through all sources (coords, values, names)
-    for i, s_name in enumerate(names):
-        # Loop through all targets (coords, values, names)
-        for j, t_name in enumerate(names):
-            print(f"Starting OT ({i*len(names)+j}/{len(names)**2-1})")
+        # Pre-configured partial function to speed up calls
+    if unbalanced is None:
+        if norm != 'sum':
+            raise ValueError("Balanced OT requires sum normalization.")
+        ot_solver = partial(
+            solve,
+            M,
+            reg=reg,
+            reg_type=reg_type
+        )
+    else:
+        ot_solver = partial(
+            solve,
+            M,
+            unbalanced=unbalanced,
+            reg=reg,
+            reg_type=reg_type
+        )
 
-            # Key for dict
-            key = tuple(sorted((s_name, t_name)))
+        # Function for single comparison
+    def compute_pair(pair):
+        i, j = pair
+        return ot_solver(values[i], values[j]).value
 
-            # Check if the same and assign 0
-            if s_name == t_name:
-                ot_value = 0
-            # Check if comparison has already been performed
-            elif key in ot_results:
-                ot_value = ot_results[key]
-            # Perform compariuson
-            else:
-                if unbalanced is None:
-                    if norm != 'sum':
-                        raise ValueError("Exact OT requires sum normalization.")
-                    ot_value = solve(M, values[i], values[j], reg=reg, reg_type=reg_type).value
-                else:
-                    ot_value = solve(M, values[i], values[j], unbalanced=unbalanced, reg=reg, reg_type=reg_type).value
-                
-            # Add to dict
-            ot_results[key] = ot_value
+
+    # Initialize results
+    ot_results = pd.DataFrame(index=names, columns=names, data=0.0)
+
     
-    # Constructing DataFrame
-    ot_values = pd.DataFrame(
-        index=names,
-        columns=names,
-        data=np.nan
-    )
+    # Sequential calculation
+    pairs = combinations(range(len(names)), 2)
+    for i, j in tqdm(pairs, total=len(names) * (len(names) - 1) // 2):
+        ot_results.iloc[i, j] = compute_pair((i, j))
+        ot_results.iloc[j, i] = ot_results.iloc[i, j]
+        gc.collect()
 
-    for (a, b), ot_value in ot_results.items():
-        if a in ot_values.index and b in ot_values.columns:
-            ot_values.loc[a, b] = ot_value
-        if b in ot_values.index and a in ot_values.columns:
-            ot_values.loc[b, a] = ot_value
-
-    return ot_values
+    return ot_results
 
 def hic_ot_bulk_deviance_parallel(
         coolers: list[cooler.Cooler], 
@@ -1378,7 +1373,7 @@ def hic_ot_bulk_threshold_sequential(
         masked_values.append(np.asarray(values))
         masked_coords.append(np.asarray(coords))
     
-    # Parallelized OT
+    # OT
     pairs = combinations(range(len(names)), 2)
 
         # Pre-configured partial function to speed up calls

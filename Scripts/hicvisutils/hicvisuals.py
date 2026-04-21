@@ -133,8 +133,8 @@ def hic_vis(clr: cooler.api.Cooler, title: str = None, data_type: str = "raw", c
     return stats
 
 def hic_vis_region(clr: cooler.api.Cooler, chrom: str, start: int = 0,
-                    end: int = None, title: str = None, data_type: str = "raw",
-                    cmap: str = None, ax=None):
+                    end: int = None, title: str = None,
+                    data_type: str = "raw", cmap: str = None, ax=None):
     '''
         Takes a cooler object, specified chromosome and region and optionally 
         a title and color map and creates a contact map for this region.
@@ -238,8 +238,9 @@ def hic_vis_region(clr: cooler.api.Cooler, chrom: str, start: int = 0,
 def hic_vis_region_zoom(
         clr: cooler.api.Cooler, 
         chrom: str,
-        title: str=None, 
-        cmap: str=None, 
+        title: str|None=None,
+        chr_label: str|None = None, 
+        cmap: str|None=None, 
         ax: plt.Axes|None=None,
         **kwargs
     ) -> None:
@@ -256,6 +257,9 @@ def hic_vis_region_zoom(
         title : str      
             Desired figure title.
             Default = None, uses a default title.
+        chr_label : str
+            Label on the y-axis.
+            Default = None, uses no label.
         cmap : str 
             Color map for visualization. Options include standard color 
             scheme (None, default), juicebox and higlass.
@@ -274,6 +278,9 @@ def hic_vis_region_zoom(
         -------
         ax : plt.Axes
             Axes object containing the plot.
+
+        TODO:
+        - Add support for changing text size.
     '''
     # Cmap doesn't exist
     if cmap != None and cmap not in cmaps.keys():
@@ -315,7 +322,8 @@ def hic_vis_region_zoom(
     ax.set_title(title)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_ylabel(f"Chromosome {chrom}", rotation='vertical')
+    if chr_label is not None:
+        ax.set_ylabel(chr_label, rotation='vertical')
 
     return ax
 
