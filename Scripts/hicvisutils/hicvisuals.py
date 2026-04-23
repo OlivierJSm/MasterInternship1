@@ -241,6 +241,7 @@ def hic_vis_region_zoom(
         title: str|None=None,
         chr_label: str|None = None, 
         cmap: str|None=None, 
+        textsize: int = 12,
         ax: plt.Axes|None=None,
         **kwargs
     ) -> None:
@@ -264,6 +265,9 @@ def hic_vis_region_zoom(
             Color map for visualization. Options include standard color 
             scheme (None, default), juicebox and higlass.
             Default = None.
+        textsize : int
+            Size of the label text.
+            Default = 14.
         ax : plt.Axes
             Optional argument to allow function to add to subfigures
             rather than create a whole new figure.
@@ -278,9 +282,6 @@ def hic_vis_region_zoom(
         -------
         ax : plt.Axes
             Axes object containing the plot.
-
-        TODO:
-        - Add support for changing text size.
     '''
     # Cmap doesn't exist
     if cmap != None and cmap not in cmaps.keys():
@@ -323,7 +324,7 @@ def hic_vis_region_zoom(
     ax.set_xticks([])
     ax.set_yticks([])
     if chr_label is not None:
-        ax.set_ylabel(chr_label, rotation='vertical')
+        ax.set_ylabel(chr_label, rotation='vertical', size=textsize)
 
     return ax
 

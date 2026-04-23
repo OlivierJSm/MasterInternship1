@@ -5,6 +5,8 @@ import seaborn as sns
 from umap import UMAP
 from scipy import stats
 import cooler
+from sklearn.cluster import KMeans
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from . import get_cool_name
 
 def compare_metrics(
@@ -13,7 +15,8 @@ def compare_metrics(
         metric1_label : str = "Metric 1",
         metric2_label: str = "Metric 2",
         figsize : tuple[int, int] = (7, 6),
-        textsize : int = 14
+        textsize : int = 12,
+        ax = None
     ) -> float:
     '''
         Generates a scatterplot with a linear trendline to compare
@@ -38,6 +41,9 @@ def compare_metrics(
         textsize : int
             Text size to use.
             Default = 14
+        ax
+            Axes object to add to.
+            Default = None, creates a new figure.
 
         Returns
         -------
@@ -62,7 +68,11 @@ def compare_metrics(
     y_line = slope * x_line + intercept
 
     # Plotting
-    fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        if figsize is not None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig, ax = plt.subplots()
 
     ax.scatter(
         x=metric1_values,
@@ -76,12 +86,12 @@ def compare_metrics(
         y_line,
         color='red',
         linestyle=":",
-        label=f"Linear fit (Pearson R² = {r**2:.4f})"
+        label=f"Pearson R² = {r**2:.4f})"
     )
 
     ax.set_xlabel(metric1_label, fontsize=textsize)
     ax.set_ylabel(metric2_label, fontsize=textsize)
-    ax.legend()
+    ax.legend(fontsize=textsize)
     plt.tight_layout()
 
     return r**2
@@ -279,6 +289,7 @@ def generate_umap(
         TODO:
         - Add support for changing text size.
     '''
+    ### UMAP ###
     # Converting to ndarray
     ot_ndarray = ot_data.to_numpy()
 
@@ -310,9 +321,71 @@ def generate_umap(
         sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=20)
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    ax.legend(handles=handles, labels=labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., ncol=1)
+    ax.legend(handles=handles, 
+              labels=labels, 
+              loc='lower left', 
+                )
+
+    # Remove ticks
     ax.set_xticks([])
     ax.set_yticks([])
+
+    # Remove spines
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    ### Barplots for clusters ###
+    # Extract clusters
+    kmeans = KMeans(n_clusters=2, random_state=0)
+    labels_kmeans = kmeans.fit_predict(vec) + 1
+
+    # Dataframe with cluster per original cell name
+    cluster_df = pd.DataFrame({
+        "cluster": labels_kmeans
+    }, index=ot_data.index)
+
+    cluster_df = cluster_df.join(
+        metadata.set_index(name_col),
+        how="left"
+    )
+
+    cluster_df["group"] = cluster_df["cell_type"].map(group_map)
+
+    # Extract counts
+    counts = pd.crosstab(cluster_df["cluster"], cluster_df["group"])
+    fraction = counts.div(counts.sum(axis=1), axis=0)
+    print(fraction)
+
+    # Create inset axes
+    ax_bar = inset_axes(ax,
+                        width="42%",
+                        height="25%",
+                        loc="upper right",
+                        bbox_to_anchor=(0.3, 0.28, 0.7, 0.7),
+                        bbox_transform=ax.transAxes,
+                        borderpad=0)
+    
+    counts.plot(
+            kind="barh",
+            stacked=True,
+            color=[palette[c] for c in fraction.columns],
+            legend=False,
+            ax=ax_bar,
+        )
+    
+    ax_bar.set_xlabel("#Cells")
+    ax_bar.set_ylabel("")
+    
+
+    ### Cluster labels ###
+    for cluster_id in np.unique(labels_kmeans):
+        coords = vec[labels_kmeans == cluster_id]
+        centroid = coords.mean(axis=0)
+
+        ax.text(centroid[0], centroid[1],
+                f"Cluster {str(cluster_id)}",
+                fontsize=10,
+                weight='bold')
 
     return vec
 

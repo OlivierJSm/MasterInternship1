@@ -1407,6 +1407,119 @@ def hic_ot_bulk_threshold_sequential(
 
     return ot_results
 
+def hic_ot_optim_multi(
+        coolers: list[cooler.Cooler], 
+        selection: str,
+        chr_include: list = None,
+        chr_exclude: set = None,  
+        norm: str='none', 
+        unbalanced: float|None=None,
+        reg: float|None=None, 
+        reg_type: str="kl",
+        top_contacts: int|None=None, 
+        thres: float|None=None,
+        thres_type: str|None=None,
+        rebin_factor: int|None=None,
+        n_jobs: int=-1
+    ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    '''
+        Performs pairwise OT with the specified parameters on the
+        provided coolers. Returns (1) average OT cost across specified chromosome
+        and (2) a dictonary of results per chromosome.
+
+        Parameters
+        ----------
+        coolers : list[cooler.Cooler]
+            List of coolers to compare.
+                selection: str
+            Type of selection criteria to select contacts for OT.
+            Options include "deviance" and "threshold".
+        chr_include : list
+            List of chromosomes to consider
+            Default = None, considers all chromosomes.
+        chr_exclude : set
+            Set of chromosomes to leave out.
+            Default = None, exlucdes no chromsomes
+        norm : str
+            Type of normalization to use. Options include "none",
+            "max" and "sum".
+            Default = 'none'.
+        unbalanced : float
+            Unbalanced parameter if UOT should be used.
+            Default = None, uses balanced OT instead.
+        reg : float
+            Entropic regularization term.
+            Default = None, uses exact OT instead.
+        reg_type : str
+            Type of regularization used.
+            Default = "kl"
+        top_contacts : int
+            Top number of contacts to consider, based on deviance.
+            Default = None, disables deviance selection.
+        thres : float
+            The cut-off value for setting a threshold.
+            Default = None, disables threshold selection
+        thres_type : str
+            The kind of threshold to be set.
+            Options include 'raw' and 'percentile'.
+            Default = None, disables threshold selection.
+        rebin_factor " int
+            Factor by which input coolers will be rebinned. Only
+            supported for threshold-based approach.
+            Default = None, uses native resolution.
+        n_jobs : int
+            Number of jobs given to joblib to parallelize.
+            Default=-1, uses maximum available.
+        
+
+        Returns
+        -------
+        sum_results : pd.DataFrame
+            Average OT results in a dataframe with cooler names as
+            row and column indices.
+        results_dict : dict[str, pd.DataFrame]
+            Dictonary with chromosome names as keys and OT results per
+            chromosome as the values.
+    '''
+    # Selecting chromosomes
+    if chr_include is None:
+        chr_include_dict = dict.fromkeys(coolers[1].chroms()[:]['name'].tolist())
+    else:
+        chr_include_dict = dict.fromkeys(chr_include)
+
+    if chr_exclude is None:
+        chr_exclude = set()
+    chr_include = [chrom for chrom in chr_include_dict if chrom not in chr_exclude]
+
+    # Initialize results dict
+    results_dict= {}
+
+    # OT for all chromosomes
+    for chrom in chr_include:
+        print(f"STARTING OT FOR {chrom}")
+        chrom_results = hic_ot_optim(
+            coolers=coolers,
+            chrom=chrom,
+            selection=selection,
+            norm=norm,
+            unbalanced=unbalanced,
+            reg=reg,
+            reg_type=reg_type,
+            top_contacts=top_contacts,
+            thres=thres,
+            thres_type=thres_type,
+            rebin_factor=rebin_factor,
+            n_jobs=n_jobs
+        )
+        print(f"FINISHED OT FOR {chrom}\n")
+
+        results_dict[chrom] = chrom_results
+    
+    # Calculating average
+    sum_results = sum(results_dict.values())
+
+    return sum_results, results_dict
+
 def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float = 0, 
                 thres_type: str = 'raw', norm: str = 'none', reg: float = None, reg_type: str = "entropy"):
     '''

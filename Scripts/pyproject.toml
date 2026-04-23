@@ -1,0 +1,10 @@
+[project]
+name = "hicot"
+version = "0.1.0"
+description = "A library of tools to use OT on Hi-C maps"
+authors = [{name="Olivier Smeets"}]
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
