@@ -10,7 +10,7 @@ clrs = import_cool_dir(data_dir)
 metadata_df = pd.read_csv(metadata_dir)
 
 ### Setting parameters
-save_dir = '/mbshome/osmeets/MasterInternship1/Generated Data/Server/'
+save_dir = '/mbshome/osmeets/MasterInternship1/Generated Data/Server/ramani_ALL_top=1500_reg_m=0.1'
 count = None
 top = 1500
 reg_m = 0.1
