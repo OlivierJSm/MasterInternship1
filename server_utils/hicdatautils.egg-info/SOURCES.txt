@@ -1,0 +1,13 @@
+pyproject.toml
+hicdatautils/__init__.py
+hicdatautils/hicdatahandling.py
+hicdatautils/hicgeneral.py
+hicdatautils/hicot.py
+hicdatautils/hicotvis.py
+hicdatautils/hicscc.py
+hicdatautils/hictests.py
+hicdatautils/hictoscc.py
+hicdatautils.egg-info/PKG-INFO
+hicdatautils.egg-info/SOURCES.txt
+hicdatautils.egg-info/dependency_links.txt
+hicdatautils.egg-info/top_level.txt
