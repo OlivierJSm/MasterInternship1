@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+import matplotlib.patheffects as pe
 import seaborn as sns
 from umap import UMAP
 from scipy import stats
@@ -40,7 +42,7 @@ def compare_metrics(
             Default = (7, 6)
         textsize : int
             Text size to use.
-            Default = 14
+            Default = 12
         ax
             Axes object to add to.
             Default = None, creates a new figure.
@@ -91,7 +93,7 @@ def compare_metrics(
 
     ax.set_xlabel(metric1_label, fontsize=textsize)
     ax.set_ylabel(metric2_label, fontsize=textsize)
-    ax.legend(fontsize=textsize)
+    ax.legend(fontsize=textsize-2)
     plt.tight_layout()
 
     return r**2
@@ -99,6 +101,7 @@ def compare_metrics(
 def generate_clustermap(
         ot_data : pd.DataFrame,
         title : str|None = None,
+        textsize : int = 10,
         **kwargs
     ) -> None:
     '''
@@ -112,6 +115,9 @@ def generate_clustermap(
         title : str
             Title of the figure.
             Default = None
+        textsize : int
+            Textsize for the labels in the figure.
+            Default = 10.
         **kwargs
             Arguments to pass to sns.clustermap
 
@@ -138,13 +144,30 @@ def generate_clustermap(
     g.ax_heatmap.set_ylabel('')
     g.ax_heatmap.xaxis.set_ticks_position('bottom')
     g.ax_heatmap.tick_params(axis='x', length=5)
-    plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha="right")
+
+    # Label formatting
+    plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0)
+    plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right', rotation_mode='anchor')
+
+    # Set tick label sizes
+    plt.setp(g.ax_heatmap.get_xticklabels(), fontsize=textsize-1)
+    plt.setp(g.ax_heatmap.get_yticklabels(), fontsize=textsize-1)
+
+    # Colorbar size
+    g.cax.tick_params(labelsize=textsize)
+    g.cax.set_ylabel("OT Value", fontsize=textsize)
+
+    # Axis labels
+    g.ax_heatmap.set_xlabel(g.ax_heatmap.get_xlabel(), fontsize=textsize)
+    g.ax_heatmap.set_ylabel(g.ax_heatmap.get_ylabel(), fontsize=textsize)
     return
 
 def generate_marginal_plot(
         ot_data : pd.DataFrame,
         mass_df : pd.DataFrame,
         cell_name_col : str = "file_name",
+        textsize : int = 12,
+        figsize : tuple[float, float] = (6,6),
         title : str|None=None
     ) -> None:
     '''
@@ -159,6 +182,12 @@ def generate_marginal_plot(
         cell_name_col : str
             Name of the column in the mass dataframe that gives the cell
             name.
+        textsize : int
+            Size of the text.
+            Default = 12.
+        figsize : tuple[float, float]
+            Size of the figure.
+            Default = (6, 6)
         title : str
             Title of the figure.
             Default = None
@@ -166,9 +195,6 @@ def generate_marginal_plot(
         Returns
         -------
         None
-
-        TODO:
-        - Add support for changing figure size.
     '''
     sns.set_theme(style="white")
 
@@ -190,7 +216,7 @@ def generate_marginal_plot(
         data=long_df_mass,
         x="mass_diff",
         y='log_value',
-        height=6
+        height=figsize[0]
     )
 
     # Joint: light scatter + contour KDE
@@ -228,14 +254,20 @@ def generate_marginal_plot(
         bw_adjust=0.8
     )
 
-    # Axis labels
-    g.set_axis_labels('Mass Difference', 'log(OT Loss)')
+    # Axes
+    g.set_axis_labels('Mass Difference', 'log(OT Value)', fontsize=textsize)
+    g.ax_joint.tick_params(axis='both', labelsize=textsize)
+    g.ax_marg_x.tick_params(axis='x', labelsize=textsize)
+    g.ax_marg_y.tick_params(axis='y', labelsize=textsize)
 
     # Title
     if title is not None:
-        g.figure.suptitle(title, fontweight='bold')
+        g.figure.suptitle(title, fontweight='bold', fontsize=textsize+2)
     g.figure.tight_layout(rect=[0, 0, 1, 0.98])
-    return
+
+    # Force figure size
+    g.figure.set_size_inches(figsize)
+    return None
 
 def generate_umap(
         ot_data: pd.DataFrame,
@@ -245,8 +277,13 @@ def generate_umap(
         type_col: str = "cell_type",
         group_map: dict|None=None,
         palette : dict|None = None,
+        barchart : bool = True,
+        n_cluster : int = 2,
         ax = None,
-        figsize : tuple[int, int]|None=None
+        figsize : tuple[int, int]|None=None,
+        textsize : int = 12,
+        bar_size : list[float, float, float, float] = [0.2, 0.0, 1.6, 0.45],
+        dot_size : int = 20
     ) -> list :
     '''
         Generates a UMAP based on the provided OT results.
@@ -274,12 +311,28 @@ def generate_umap(
             Dictonary that maps groups in metadata or in the group_map to specific
             colors.
             Default = None, automatically asigns colors.
+        barchart : bool
+            Determines whether clusters are indicated and described using
+            a barchart.
+            Default = True.
+        n_cluster : int
+            Determines into how many clusters the umap is devided for the barchart.
+            Default = 2
         ax
             Axes object to add to.
             Default = None, creates a new figure.
         figsize : tuple[int, int]
             Size of the figure if ax is None.
             Default = None, uses standard figsize.
+        textsize : int
+            Size of the text.
+            Default = 12
+        bar_size : list[float, float, float, float]
+            Dimensions of the barchart as [left, bottom, width, height].
+            Default = [0.2, 0.0, 1.6, 0.45]
+        dot_size : int
+            Size of the dots
+            Default=20
 
         Returns
         -------
@@ -306,25 +359,43 @@ def generate_umap(
 
     # Figure
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            fig, ax = plt.subplots()
-        if title is not None:
-            ax.set_title(title, fontweight="bold")
-    elif title is not None:
-        ax.set_title(title)
+        if figsize is None:
+            figsize= (10, 6)
 
+        print(figsize)
+        fig = plt.figure(figsize=figsize)
+        
+        gs = GridSpec(
+            nrows=2,
+            ncols=2,
+            width_ratios=[4, 1.3],
+            height_ratios=[1, 1],
+            figure=fig
+        )
+
+        ax = fig.add_subplot(gs[:, 0])      
+        ax_side = fig.add_subplot(gs[:, 1])
+
+        ax_side.axis("off")
+
+        if title is not None:
+            ax.set_title(title, fontweight="bold", fontsize=textsize+2)
+    elif title is not None:
+        ax.set_title(title, fontsize=textsize+2)
     if palette is None:
-        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=20)
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=dot_size)
     else:
-        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=20)
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=dot_size)
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    ax.legend(handles=handles, 
-              labels=labels, 
-              loc='lower left', 
-                )
+    ax.legend_.remove()
+    legend = ax_side.legend(
+        handles,
+        labels,
+        loc="upper left",
+        frameon=False,
+        fontsize=textsize-1
+    )
 
     # Remove ticks
     ax.set_xticks([])
@@ -335,57 +406,64 @@ def generate_umap(
         spine.set_visible(False)
 
     ### Barplots for clusters ###
-    # Extract clusters
-    kmeans = KMeans(n_clusters=2, random_state=0)
-    labels_kmeans = kmeans.fit_predict(vec) + 1
+    if barchart:
+        # Extract clusters
+        kmeans = KMeans(n_clusters=n_cluster, random_state=0)
+        labels_kmeans = kmeans.fit_predict(vec) + 1
 
-    # Dataframe with cluster per original cell name
-    cluster_df = pd.DataFrame({
-        "cluster": labels_kmeans
-    }, index=ot_data.index)
+        # Dataframe with cluster per original cell name
+        cluster_df = pd.DataFrame({
+            "cluster": labels_kmeans
+        }, index=ot_data.index)
 
-    cluster_df = cluster_df.join(
-        metadata.set_index(name_col),
-        how="left"
-    )
-
-    cluster_df["group"] = cluster_df["cell_type"].map(group_map)
-
-    # Extract counts
-    counts = pd.crosstab(cluster_df["cluster"], cluster_df["group"])
-    fraction = counts.div(counts.sum(axis=1), axis=0)
-    print(fraction)
-
-    # Create inset axes
-    ax_bar = inset_axes(ax,
-                        width="42%",
-                        height="25%",
-                        loc="upper right",
-                        bbox_to_anchor=(0.3, 0.28, 0.7, 0.7),
-                        bbox_transform=ax.transAxes,
-                        borderpad=0)
-    
-    counts.plot(
-            kind="barh",
-            stacked=True,
-            color=[palette[c] for c in fraction.columns],
-            legend=False,
-            ax=ax_bar,
+        cluster_df = cluster_df.join(
+            metadata.set_index(name_col),
+            how="left"
         )
-    
-    ax_bar.set_xlabel("#Cells")
-    ax_bar.set_ylabel("")
-    
 
-    ### Cluster labels ###
-    for cluster_id in np.unique(labels_kmeans):
-        coords = vec[labels_kmeans == cluster_id]
-        centroid = coords.mean(axis=0)
+        cluster_df["group"] = cluster_df["cell_type"].map(group_map)
 
-        ax.text(centroid[0], centroid[1],
-                f"Cluster {str(cluster_id)}",
-                fontsize=10,
-                weight='bold')
+        # Extract counts
+        counts = pd.crosstab(cluster_df["cluster"], cluster_df["group"])
+        fraction = counts.div(counts.sum(axis=1), axis=0)
+        print(fraction)
+
+        # Axes barchart
+        ax_bar = ax_side.inset_axes(bar_size)
+
+        # Create inset axes
+        counts.plot(
+                kind="barh",
+                stacked=True,
+                color=[palette[c] for c in fraction.columns],
+                legend=False,
+                ax=ax_bar
+            )
+        
+        # Style tweaks
+        ax_bar.set_xlabel("#Cells", fontsize=textsize)
+        ax_bar.set_ylabel("")
+        ax_bar.tick_params(axis='both', labelsize=textsize)
+        ax_bar.invert_yaxis()
+        sns.despine(ax=ax_bar)
+
+        ### Cluster labels ###
+        for cluster_id in np.unique(labels_kmeans):
+            coords = vec[labels_kmeans == cluster_id]
+            centroid = coords.mean(axis=0)
+
+            text = ax.text(
+                centroid[0],
+                centroid[1],
+                f"CL {str(cluster_id)}",
+                fontsize=textsize,
+                weight='bold',
+                color='black'
+            )
+
+            text.set_path_effects([
+                pe.withStroke(linewidth=3, foreground='white')
+            ])
 
     return vec
 
@@ -397,7 +475,8 @@ def generate_violin_plot(
         palette : dict|None = None,
         order : list[str] | None=None,
         ax = None,
-        fig_size : tuple[int, int]|None = None
+        fig_size : tuple[int, int]|None = None,
+        textsize : int = 14
 ) -> None:
     '''
         Takes coolers and metadata information to generate violin
@@ -463,9 +542,10 @@ def generate_violin_plot(
         order=order,
         cut=0
     )
-    ax.set_ylabel("Counts")
-    ax.set_xlabel("")
+    ax.set_ylabel("Counts", fontsize=textsize)
+    ax.set_xlabel("", fontsize=textsize)
     ax.set_ylim(bottom=0)
+    ax.tick_params(axis='both', labelsize=textsize-4)
 
     # Adding counts to graphs
     counts = totals_df[cell_type_col].value_counts()
@@ -480,7 +560,7 @@ def generate_violin_plot(
             f"n = {counts[ct]}",
             ha="center",
             va="bottom",
-            fontsize=10,
+            fontsize=textsize-4,
             fontstyle='italic'
         )
 
