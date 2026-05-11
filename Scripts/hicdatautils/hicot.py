@@ -1420,6 +1420,8 @@ def hic_ot_optim_multi(
         thres: float|None=None,
         thres_type: str|None=None,
         rebin_factor: int|None=None,
+        save_dir : str|None = None,
+        base_file : str|None = None,
         n_jobs: int=-1
     ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     '''
@@ -1467,6 +1469,13 @@ def hic_ot_optim_multi(
             Factor by which input coolers will be rebinned. Only
             supported for threshold-based approach.
             Default = None, uses native resolution.
+        save_dir : str
+            Directory to save to if saving is enabled.
+            Default = None, doesn't save
+        base_file : str
+            Base filename to save data for. Specific chromosomes and
+            sum are added.
+            Default = None, doesn't save.
         n_jobs : int
             Number of jobs given to joblib to parallelize.
             Default=-1, uses maximum available.
@@ -1481,6 +1490,10 @@ def hic_ot_optim_multi(
             Dictonary with chromosome names as keys and OT results per
             chromosome as the values.
     '''
+    # Errors for saving
+    if (save_dir is None and base_file is not None) or (save_dir is not None and base_file is None):
+        raise ValueError("Provide both save_dir and base_file for saving!")
+
     # Selecting chromosomes
     if chr_include is None:
         chr_include_dict = dict.fromkeys(coolers[1].chroms()[:]['name'].tolist())
@@ -1511,12 +1524,18 @@ def hic_ot_optim_multi(
             rebin_factor=rebin_factor,
             n_jobs=n_jobs
         )
+
+        # Saving if enabled
+        if save_dir is not None and base_file is not None:
+            chrom_results.to_csv(f"{save_dir}/{base_file}_{chrom}.csv")
+
         print(f"FINISHED OT FOR {chrom}\n")
 
         results_dict[chrom] = chrom_results
     
     # Calculating average
     sum_results = sum(results_dict.values())
+    sum_results.to_csv(f"{save_dir}/{base_file}_SUM.csv")
 
     return sum_results, results_dict
 
