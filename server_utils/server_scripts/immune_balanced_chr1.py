@@ -11,18 +11,22 @@ metadata_df = pd.read_csv(metadata_dir, sep="\t")
 
 ### Setting parameters
 save_dir = '/mbshome/osmeets/MasterInternship1/Generated Data/Server'
-count = 2
+count = 100
 res = 1
 thres = 95
 
 ### Subset
+print("Starting subsetting\n")
 balanced_subset = subset_clr_data(
     data_dir,
     metadata_df,
-    count
+    count,
+    iqr_rule = 1.5
 )
+print("Finished subsetting\n")
 
 ### OT
+print("Starting OT\n")
 balanced_results = hic_ot_optim(
     balanced_subset,
     "chr1",
@@ -32,6 +36,7 @@ balanced_results = hic_ot_optim(
     thres_type="percentile",
     rebin_factor=res
 )
+print("Finished OT\n")
 
 ### Saving
 balanced_results.to_csv(f"{save_dir}/immune_balanced_chr1_count={count}_res={res}_thres={thres}.csv")
