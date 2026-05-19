@@ -21,7 +21,8 @@ unbalanced_subset = subset_clr_data(
     data_dir,
     metadata_df,
     count,
-    iqr_rule = 1.5
+    iqr_rule = 1.5,
+    type_col="cell_line"
 )
 print("Finished subsetting\n")
 
