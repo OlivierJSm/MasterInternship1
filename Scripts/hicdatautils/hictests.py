@@ -90,8 +90,7 @@ def generate_related_contact_map(base_map: np.ndarray, similarity: float, base_d
     rng = np.random.default_rng(seed)
     size = base_map.shape[0]
 
-    # Interpolate decay rate: close to base_decay for high similarity,
-    # far away (random within range) for low similarity
+    # Interpolate decay rate
     if similarity < 1:
         target_decay = base_decay + (rng.uniform(min_decay, max_decay) - base_decay) * (1 - similarity)
     else:
@@ -100,7 +99,7 @@ def generate_related_contact_map(base_map: np.ndarray, similarity: float, base_d
     # Noise level increases as similarity decreases
     noise_level = max_extra_noise * (1 - similarity)
 
-    # Generate a variant map with slightly different decay
+    # Generate a variant map with different decay
     variant_map = generate_contact_map(size=size,
                                        total_reads=base_map.sum(),
                                        decay_rate=target_decay,
@@ -110,16 +109,16 @@ def generate_related_contact_map(base_map: np.ndarray, similarity: float, base_d
     # Blend base and variant
     new_map = similarity * base_map + (1 - similarity) * variant_map
 
-    # Add localized noise (small random patches)
+    # Add localized noise
     patch_intensity = 0.2 * (1 - similarity)
     if patch_intensity > 0:
         patches = rng.lognormal(mean=0, sigma=patch_intensity, size=base_map.shape)
         new_map *= patches
 
-    # Clip any remaining negatives
+    # Clip negatives
     new_map = np.clip(new_map, 0, None)
 
-    # Symmetrize and rescale to keep total reads the same
+    # Symmetrize + rescale
     new_map = (new_map + new_map.T) / 2
     total_reads = base_map.sum()
     new_map *= total_reads / new_map.sum()

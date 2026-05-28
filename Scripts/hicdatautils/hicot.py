@@ -369,7 +369,7 @@ def hic_mask_threshold(matrix : np.ndarray, cut_off : float, type : str = "raw",
 def hic_calculate_deviance(
         coolers : list[cooler.Cooler],
         chrom : str
-    ):
+    ) -> pd.DataFrame:
 
     '''
         Takes a list of coolers with identical structure and calculates
@@ -468,6 +468,8 @@ def hic_ot_source_to_targets(source: np.ndarray, targets: list[np.ndarray], cut_
                              type: str = 'raw', norm: str = 'none' , unbalanced: float = None,
                              reg: float = None, reg_type: str = "entropy", return_size: bool = False):
     '''
+        OLD IMPLEMENTATION, USE hic_ot_optim!    
+    
         Takes a source matrix and list of target matrices and performs optimal
         transport from the source to all designated target matrices.
 
@@ -545,6 +547,8 @@ def hic_ot(source: np.ndarray, target: np.ndarray, thres: float = 0,
             thres_type: str='raw', norm: str='none' , unbalanced: float|None=None,
             reg: float|None=None, reg_type: str="entropy") -> float:
     '''
+        OLD IMPLEMENTATION, USE hic_ot_optim!    
+        
         Performs OT with the specified parameters from a source
         hic contact map to a target hic contact map.
 
@@ -601,6 +605,8 @@ def hic_ot_bulk(sources: list[np.ndarray], targets: list[np.ndarray], thres: flo
                 thres_type: str='raw', norm: str='none' , unbalanced: float|None=None,
                 reg: float|None=None, reg_type: str="entropy") -> list[list[float]]:
     '''
+        OLD IMPLEMENTATION, USE hic_ot_optim!    
+        
         Performs OT with the specified parameters from source
         hic contact maps to target hic contact maps.
 
@@ -685,6 +691,8 @@ def hic_ot_bulk_clr(sources: list[cooler.Cooler], targets: list[cooler.Cooler], 
                     thres: float = 0, thres_type: str='raw', norm: str='none' , unbalanced: float|None=None,
                     reg: float|None=None, reg_type: str="kl") -> pd.DataFrame:
     '''
+        OLD IMPLEMENTATION, USE hic_ot_optim!    
+        
         Performs OT with the specified parameters from source
         hic contact maps to target hic contact maps. Inputs are coolers
         to prevent double calculations.
@@ -832,6 +840,9 @@ def hic_ot_bulk_deviance(
         reg_type: str="kl"
         ) -> pd.DataFrame:
     '''
+        UNOPTIMIZED FUNCTION ONLY TO BE USED FOR RAM INTENSIVE OT TASKS.
+        OTHERWISE, USE hic_ot_bulk_deviance_parallel().
+        
         Performs pairwise OT with the specified parameters on the
         provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on deviance.
@@ -1309,6 +1320,9 @@ def hic_ot_bulk_threshold_sequential(
         reg_type: str="kl",
     ) -> pd.DataFrame:
     '''
+        UNOPTIMIZED FUNCTION ONLY TO BE USED FOR RAM INTENSIVE OT TASKS.
+        OTHERWISE, USE hic_ot_bulk_threshold_parallel().
+        
         Performs pairwise OT with the specified parameters on the
         provided coolers. Inputs are coolers to prevent double calculations. 
         Selects contacts to consider based on thresholding. Calculates each cost
@@ -1542,11 +1556,11 @@ def hic_ot_optim_multi(
 def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float = 0, 
                 thres_type: str = 'raw', norm: str = 'none', reg: float = None, reg_type: str = "entropy"):
     '''
+        NONFUNCTIONING. USE hic_ot_optim INSTEAD.
+
         Takes a list of source matrices and a list of target matrices, performs
         OT from these sources to targets, and returns the OT loss values.
 
-        CURRENTLY NOT WORKING, ALSO CANNOT SUPPORT UNBALANCED
-        MAY NOT EVER WORK, AS MATRICES OF IDENTICAL SHAPE ARE REQUIRED
     Parameters
         ----------
         sources : list[np.ndarray]
@@ -1612,7 +1626,7 @@ def batch_ot(sources: list[np.ndarray], targets: list[np.ndarray], thres: float 
 def hic_ot_chr_value(src_clr: np.ndarray, trg_clr: np.ndarray, unbalanced: float = 5e-2,
            reg: float = 1e-1):
     '''
-        NO LONGER MAINTAINED, USE OTHER FUNCTIONS
+        NO LONGER MAINTAINED, USE hic_ot_optim INSTEAD.
         
         Takes a source and target data array representing a contact map
         for a specific chromosome and performs exact/Sinkhorn unbalanced

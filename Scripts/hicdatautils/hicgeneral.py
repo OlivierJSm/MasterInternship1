@@ -231,7 +231,7 @@ def fetch_region(clr: cooler.api.Cooler, chrom: str, start: int = None, end: str
     if not (0 <= start < end <= chrom_len):
         raise ValueError(f'Invalid region provided: start={start}, end={end}, chromosome length={chrom_len}')
     
-    # Allign start and end to nearest bins
+    # Align start and end to nearest bins
     bin_size = clr.binsize
     start = (start // bin_size) * bin_size
     end = ((end + bin_size - 1) // bin_size) * bin_size
@@ -264,7 +264,7 @@ def get_chrs(clr: cooler.api.Cooler, chr_exclude: set = None):
             Chromosome lengths (list)
     '''
     # Get chromosomes and lengths
-    chrom_table = clr.chromsizes  # pandas Series: index=chrom names, values=lengths
+    chrom_table = clr.chromsizes 
     
     if chr_exclude is not None:
         missing = set(chr_exclude) - set(chrom_table.index)
@@ -451,6 +451,9 @@ def standardize_coolers_bulk(clrs: list[cooler.api.Cooler], ref: cooler.api.Cool
 
 def bin_contact_map(matrix : np.ndarray, bin_size : int):
     '''
+        THIS IS AN OLDER IMPLEMENTATION OF REBINNING. USE rebin_contact_map()
+        INSTEAD.
+
         Bins a Hi-C-like contact map to smaller total bin numbers
         by binning bin_size bins together.
 
@@ -580,10 +583,10 @@ def compile_hic_reads(coolers: list[cooler.Cooler], chrom: str, ) -> pd.DataFram
 
 def bulk_coarsen(in_dir: str, out_dir: str, factor: int) -> None:
     '''
+        UNFINISHED FUNCTION, NEVER USED IN FINAL PROJECT
+        
         Takes a directory with .cool files and bins them to the provided
         resolution.
-
-        FUNTION IS UNFINISHED
 
         Parameters
         ----------
@@ -655,8 +658,7 @@ def remap_pixels(clr: cooler.api.Cooler, old_map: dict, new_map: dict):
 def harmonize_coolers(clr1: cooler.api.Cooler, clr2: cooler.api.Cooler, out_path1: str,
                         out_path2: str):
     '''
-        FUNCTION IS DEPRECATED, USE STANDARDIZE_COOLERS. IT DOES THE SAME THING
-        BUT FASTER
+        FUNCTION IS DEPRECATED, USE STANDARDIZE_COOLERS.
 
         Takes two cooler files and creates new .cool files such that they share
         equivalent chromosome lengths. Additional, removes any chromosomes not

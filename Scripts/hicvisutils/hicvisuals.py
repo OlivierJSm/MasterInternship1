@@ -177,7 +177,7 @@ def hic_vis_region(clr: cooler.api.Cooler, chrom: str, start: int = 0,
             f"Invalid map '{cmap}'. Choose from {cmaps.keys()} or leave as None" 
         )
     
-    # Choose colormap (select from dict if not default) 
+    # Choose colormap
     if cmap != None:
         cmap = cmaps[cmap]
 
@@ -324,7 +324,7 @@ def hic_vis_region_zoom(
     ax.set_xticks([])
     ax.set_yticks([])
     if chr_label is not None:
-        ax.set_ylabel(chr_label, rotation='vertical', size=textsize)
+        ax.set_title(chr_label, size=textsize)
 
     return ax
 
@@ -362,7 +362,7 @@ def hic_vis_matrix(matrix : np.ndarray, title: str, data_type: str="raw",
             f"Invalid map '{cmap}'. Choose from {cmaps.keys()} or leave as None"    # Not very elegant, but works
         )
     
-    # Choose colormap (select from dict if not default) 
+    # Choose colormap
     if cmap != None:
         cmap = cmaps[cmap]
     

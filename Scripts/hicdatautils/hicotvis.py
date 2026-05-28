@@ -19,6 +19,7 @@ def compare_metrics(
         metric2_label: str = "Metric 2",
         figsize : tuple[int, int] = (7, 6),
         textsize : int = 12,
+        title : str|None = None,
         ax = None
     ) -> float:
     '''
@@ -44,6 +45,9 @@ def compare_metrics(
         textsize : int
             Text size to use.
             Default = 12
+        title : str
+            Title for the figure.
+            Default = None, uses no title.
         ax
             Axes object to add to.
             Default = None, creates a new figure.
@@ -81,7 +85,8 @@ def compare_metrics(
         x=metric1_values,
         y=metric2_values,
         marker='s', 
-        c='black'
+        c='grey',
+        alpha=0.5
     )
 
     ax.plot(
@@ -89,12 +94,14 @@ def compare_metrics(
         y_line,
         color='red',
         linestyle=":",
-        label=f"Pearson R² = {r**2:.4f})"
+        label=f"Pearson R² = {r**2:.4f})",
     )
 
-    ax.set_xlabel(metric1_label, fontsize=textsize)
-    ax.set_ylabel(metric2_label, fontsize=textsize)
-    ax.legend(fontsize=textsize-2)
+    ax.set_xlabel(metric1_label, fontsize=textsize-2)
+    ax.set_ylabel(metric2_label, fontsize=textsize-2)
+    ax.legend(fontsize=textsize-2, loc="best")
+    if title is not None:
+        ax.set_title(title, fontsize=textsize)
     plt.tight_layout()
 
     return r**2
@@ -104,7 +111,7 @@ def generate_clustermap(
         title : str|None = None,
         textsize : int = 10,
         **kwargs
-    ) -> None:
+    ) -> sns.matrix.ClusterGrid:
     '''
         Generates a clustermap based on the provided OT data in long
         form.
@@ -124,7 +131,7 @@ def generate_clustermap(
 
         Returns
         -------
-        None
+        sns.matrix.ClusterGrid instance
     '''
     # Calculating means per cell type
     mean_matrix = ot_data.groupby(
@@ -140,7 +147,7 @@ def generate_clustermap(
         cmap='viridis',
         **kwargs)
     if title is not None:
-        plt.suptitle(title, fontweight='bold')
+        plt.suptitle(title, fontsize=textsize+2, y=1.02)
     g.ax_heatmap.set_xlabel('')
     g.ax_heatmap.set_ylabel('')
     g.ax_heatmap.xaxis.set_ticks_position('bottom')
@@ -161,7 +168,7 @@ def generate_clustermap(
     # Axis labels
     g.ax_heatmap.set_xlabel(g.ax_heatmap.get_xlabel(), fontsize=textsize)
     g.ax_heatmap.set_ylabel(g.ax_heatmap.get_ylabel(), fontsize=textsize)
-    return
+    return g
 
 def generate_marginal_plot(
         ot_data : pd.DataFrame,
@@ -220,7 +227,7 @@ def generate_marginal_plot(
         height=figsize[0]
     )
 
-    # Joint: light scatter + contour KDE
+    # Joint scatter + contour (KDE)
     g.ax_joint.scatter(
         long_df_mass["mass_diff"],
         long_df_mass['log_value'],
@@ -235,7 +242,8 @@ def generate_marginal_plot(
         ax=g.ax_joint,
         levels=10,
         bw_adjust=0.8,
-        color='black'
+        color='black',
+        linewidths=0.3
     )
 
     # Marginals
@@ -284,7 +292,8 @@ def generate_umap(
         figsize : tuple[int, int]|None=None,
         textsize : int = 12,
         bar_size : list[float, float, float, float] = [0.2, 0.0, 1.6, 0.45],
-        dot_size : int = 20
+        dot_size : int = 20,
+        alpha : float = 1.0
     ) -> list :
     '''
         Generates a UMAP based on the provided OT results.
@@ -334,7 +343,9 @@ def generate_umap(
         dot_size : int
             Size of the dots
             Default=20
-
+        alpha : float
+            Transparency of the dots in the UMAP.
+            Default = 1, not transparent at all.
         Returns
         -------
         vec : list
@@ -370,7 +381,17 @@ def generate_umap(
             figure=fig
         )
 
-        ax = fig.add_subplot(gs[:, 0])      
+        ax = fig.add_subplot(gs[:, 0])
+
+        # Shift UMAP plot downward
+        pos = ax.get_position()
+        ax.set_position([
+            pos.x0,
+            pos.y0 - 0.1,
+            pos.width,
+            pos.height
+        ])
+
         ax_side = fig.add_subplot(gs[:, 1])
 
         ax_side.axis("off")
@@ -380,12 +401,13 @@ def generate_umap(
     elif title is not None:
         ax.set_title(title, fontsize=textsize+2)
     if palette is None:
-        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=dot_size)
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, ax=ax, linewidth=0, s=dot_size, alpha=alpha)
     else:
-        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=dot_size)
+        sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=dot_size, alpha=alpha)
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
 
+    ### Legend ###
     ax.legend_.remove()
     legend = ax_side.legend(
         handles,
@@ -395,13 +417,16 @@ def generate_umap(
         fontsize=textsize-1
     )
 
+    for lh in legend.legend_handles:
+        lh.set_alpha(1)
+
     # Remove ticks
     ax.set_xticks([])
     ax.set_yticks([])
 
     # Remove spines
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
 
     ### Barplots for clusters ###
     if barchart:
@@ -430,11 +455,12 @@ def generate_umap(
 
         # Axes barchart
         ax_bar = ax_side.inset_axes(bar_size)
+        
         # Create inset axes
         counts.plot(
                 kind="barh",
                 stacked=True,
-                color=[palette[c] for c in fraction.columns],
+                color=[palette[c] for c in fraction.columns] if palette is not None else None,
                 legend=False,
                 ax=ax_bar
             )
@@ -593,6 +619,9 @@ def generate_deviance_heatmap(
         title : str
             Title to use.
             Default = None, uses no title.
+        label : str
+            Label on the y-axis to use.
+            Default = None, uses no label
         ax
             Axis to pass figure to.
             Default = None, creates a new figure
