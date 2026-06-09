@@ -406,6 +406,8 @@ def generate_umap(
         sns.scatterplot(x=vec[:, 0], y=vec[:, 1], hue=cell_types, palette=palette, ax=ax, linewidth=0, s=dot_size, alpha=alpha)
     handles, labels = ax.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+    ax.set_xlabel("UMAP 1", fontsize=textsize)
+    ax.set_ylabel("UMAP 2", fontsize=textsize)
 
     ### Legend ###
     ax.legend_.remove()
